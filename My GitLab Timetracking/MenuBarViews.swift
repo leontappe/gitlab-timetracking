@@ -137,13 +137,28 @@ struct MenuBarContentView: View {
     @ViewBuilder
     private var createIssueSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DisclosureGroup("Create New Issue", isExpanded: $isCreateExpanded) {
+            Button {
+                isCreateExpanded.toggle()
+            } label: {
+                HStack {
+                    Text("Create New Issue")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: isCreateExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isCreateExpanded {
                 VStack(alignment: .leading, spacing: 10) {
                     createIssueContent
                     createIssueActions
                     createIssueStatus
                 }
-                .padding(.top, 8)
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
     }
@@ -174,13 +189,16 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
                 isProjectListExpanded.toggle()
+                if !isProjectListExpanded {
+                    projectSearch = ""
+                }
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Project")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(selectedProjectLabel)
+                        Text(isProjectListExpanded ? "Search or choose a project" : selectedProjectLabel)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
@@ -195,17 +213,31 @@ struct MenuBarContentView: View {
             .buttonStyle(.plain)
 
             if isProjectListExpanded {
-                TextField("Search projects", text: $projectSearch)
-                    .textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search projects", text: $projectSearch)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(10)
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(filteredProjects), id: \.id) { project in
-                            projectRow(project)
+                    Divider()
+
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(filteredProjects), id: \.id) { project in
+                                projectRow(project)
+                                if project.id != filteredProjects.last?.id {
+                                    Divider()
+                                }
+                            }
                         }
                     }
+                    .frame(maxHeight: 180)
                 }
-                .frame(maxHeight: 180)
+                .background(Color(NSColor.textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -214,6 +246,7 @@ struct MenuBarContentView: View {
         Button {
             projectManager.selectProject(id: project.id)
             isProjectListExpanded = false
+            projectSearch = ""
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
