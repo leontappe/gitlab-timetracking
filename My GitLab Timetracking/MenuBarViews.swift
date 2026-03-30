@@ -187,34 +187,6 @@ struct MenuBarContentView: View {
 
     private var projectSelectionView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                let nextState = !isProjectListExpanded
-                isProjectListExpanded = nextState
-                if nextState {
-                    projectManager.loadProjectsOnDemand()
-                } else {
-                    projectSearch = ""
-                }
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Project")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(isProjectListExpanded ? "Search or choose a project" : selectedProjectLabel)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Image(systemName: isProjectListExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(10)
-                .background(Color(NSColor.controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-
             if isProjectListExpanded {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 8) {
@@ -222,55 +194,95 @@ struct MenuBarContentView: View {
                             .foregroundStyle(.secondary)
                         TextField("Search projects", text: $projectSearch)
                             .textFieldStyle(.plain)
-                    }
-                    .padding(10)
-
-                    Divider()
-
-                    if projectManager.isLoadingProjects {
-                        VStack(spacing: 10) {
-                            ProgressView()
-                            Text("Loading projects…")
-                                .font(.caption)
+                        Button {
+                            isProjectListExpanded = false
+                            projectSearch = ""
+                        } label: {
+                            Image(systemName: "chevron.up")
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(16)
-                    } else if let projectErrorMessage = projectManager.projectErrorMessage, projectManager.projects.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(projectErrorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                            Button("Retry Loading Projects") {
-                                projectManager.loadProjectsOnDemand()
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                    } else if filteredProjects.isEmpty {
-                        Text(projectSearch.isEmpty ? "No projects available." : "No matching projects.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(Array(filteredProjects), id: \.id) { project in
-                                    projectRow(project)
-                                    if project.id != filteredProjects.last?.id {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 180)
+                        .buttonStyle(.plain)
                     }
+                    .padding(10)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    projectResultsView
                 }
-                .background(Color(NSColor.textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Button {
+                    isProjectListExpanded = true
+                    projectManager.loadProjectsOnDemand()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Project")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(selectedProjectLabel)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    @ViewBuilder
+    private var projectResultsView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+
+            if projectManager.isLoadingProjects {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading projects…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(16)
+            } else if let projectErrorMessage = projectManager.projectErrorMessage, projectManager.projects.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(projectErrorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button("Retry Loading Projects") {
+                        projectManager.loadProjectsOnDemand(forceRefresh: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+            } else if filteredProjects.isEmpty {
+                Text(projectSearch.isEmpty ? "No projects available." : "No matching projects.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(filteredProjects), id: \.id) { project in
+                            projectRow(project)
+                            if project.id != filteredProjects.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 180)
+            }
+        }
+        .background(Color(NSColor.textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func projectRow(_ project: GitLabProject) -> some View {
@@ -293,7 +305,10 @@ struct MenuBarContentView: View {
                         .foregroundStyle(.tint)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

@@ -12,6 +12,7 @@ final class ProjectManager: ObservableObject {
     private let settings: AppSettings
     private let api = GitLabAPI()
     private let cacheStore = ProjectCacheStore()
+    private var cancellables = Set<AnyCancellable>()
 
     @Published var projects: [GitLabProject] = []
     @Published var selectedProjectID: Int?
@@ -26,6 +27,16 @@ final class ProjectManager: ObservableObject {
         self.settings = authManager.settings
         loadCachedProjects()
         applyRememberedSelection()
+
+        authManager.$currentUser
+            .sink { [weak self] currentUser in
+                guard let self else { return }
+                guard currentUser != nil else { return }
+                self.loadProjectsOnDemand(forceRefresh: self.projects.isEmpty)
+            }
+            .store(in: &cancellables)
+
+        loadProjectsOnDemand(forceRefresh: false)
     }
 
     var orderedProjects: [GitLabProject] {
@@ -53,8 +64,12 @@ final class ProjectManager: ObservableObject {
         }
     }
 
-    func loadProjectsOnDemand() {
-        guard projects.isEmpty, authManager.isAuthenticated, !isLoadingProjects else {
+    func loadProjectsOnDemand(forceRefresh: Bool = false) {
+        guard authManager.isAuthenticated, !isLoadingProjects else {
+            return
+        }
+
+        if !forceRefresh && !projects.isEmpty {
             return
         }
 
