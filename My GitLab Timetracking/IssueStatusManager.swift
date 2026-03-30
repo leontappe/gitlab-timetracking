@@ -27,6 +27,13 @@ final class IssueStatusManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        authManager.settings.$gitLabGroupPath
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.loadStatusesIfNeeded(forceRefresh: true)
+            }
+            .store(in: &cancellables)
+
         loadStatusesIfNeeded(forceRefresh: false)
     }
 

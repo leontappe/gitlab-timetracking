@@ -36,7 +36,7 @@ struct MenuBarContentView: View {
     @State private var highlightedProjectID: Int?
     @FocusState private var isProjectSearchFocused: Bool
     private var issueStatuses: [String] {
-        issueStatusManager.statuses + ["none"]
+        availableIssueStatuses + ["none"]
     }
 
     var body: some View {
@@ -74,6 +74,12 @@ struct MenuBarContentView: View {
             if selectedIssueStatus == "doing" || !statuses.contains(selectedIssueStatus) {
                 selectedIssueStatus = preferredStatus ?? statuses.first ?? "none"
             }
+        }
+        .onChange(of: projectManager.selectedProjectID) { _, _ in
+            syncSelectedStatus()
+        }
+        .onChange(of: settings.gitLabGroupPath) { _, _ in
+            syncSelectedStatus()
         }
     }
 
@@ -185,8 +191,8 @@ struct MenuBarContentView: View {
             Text("Connect your GitLab account to create issues.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        } else if projectManager.projects.isEmpty && !projectManager.isLoadingProjects {
-            Text("No cached projects yet. Refresh the project list.")
+        } else if scopedProjects.isEmpty && !projectManager.isLoadingProjects {
+            Text(noProjectsMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -221,6 +227,12 @@ struct MenuBarContentView: View {
 
             if let errorMessage = issueStatusManager.errorMessage {
                 Text("Status list fallback in use: \(errorMessage)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !settings.normalizedGroupPath.isEmpty {
+                Text("Projects are scoped to `\(settings.normalizedGroupPath)` for status selection.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -358,6 +370,7 @@ struct MenuBarContentView: View {
                             proxy.scrollTo(newValue, anchor: .center)
                         }
                     }
+                    .scrollIndicators(.never)
                 }
                 .frame(height: min(CGFloat(displayedProjects.count) * 44, 220))
             }
@@ -449,14 +462,16 @@ struct MenuBarContentView: View {
     }
 
     private var filteredProjects: [GitLabProject] {
+        let baseProjects = scopedProjects
         let query = projectSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            return projectManager.orderedProjects
+            return baseProjects
         }
 
-        return projectManager.orderedProjects.filter { project in
+        return baseProjects.filter { project in
             project.name.localizedCaseInsensitiveContains(query)
                 || project.nameWithNamespace.localizedCaseInsensitiveContains(query)
+                || project.pathWithNamespace.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -526,6 +541,58 @@ struct MenuBarContentView: View {
         return selectedProject.nameWithNamespace
     }
 
+    private var availableIssueStatuses: [String] {
+        guard
+            let selectedProject,
+            matchesConfiguredGroup(project: selectedProject)
+        else {
+            return settings.normalizedGroupPath.isEmpty ? issueStatusManager.statuses : []
+        }
+
+        return issueStatusManager.statuses
+    }
+
+    private var selectedProject: GitLabProject? {
+        guard let selectedProjectID = projectManager.selectedProjectID else {
+            return nil
+        }
+
+        return projectManager.projects.first(where: { $0.id == selectedProjectID })
+    }
+
+    private var scopedProjects: [GitLabProject] {
+        let groupPath = settings.normalizedGroupPath
+        guard !groupPath.isEmpty else {
+            return projectManager.orderedProjects
+        }
+
+        return projectManager.orderedProjects.filter(matchesConfiguredGroup)
+    }
+
+    private var noProjectsMessage: String {
+        guard !settings.normalizedGroupPath.isEmpty else {
+            return "No cached projects yet. Refresh the project list."
+        }
+
+        return "No cached projects found in `\(settings.normalizedGroupPath)`. Refresh the project list or update the group path in Settings."
+    }
+
+    private func matchesConfiguredGroup(project: GitLabProject) -> Bool {
+        let configuredGroupPath = settings.normalizedGroupPath.lowercased()
+        guard !configuredGroupPath.isEmpty else {
+            return true
+        }
+
+        let projectPath = project.pathWithNamespace.lowercased()
+        return projectPath == configuredGroupPath || projectPath.hasPrefix(configuredGroupPath + "/")
+    }
+
+    private func syncSelectedStatus() {
+        let statuses = issueStatuses
+        guard !statuses.contains(selectedIssueStatus) else { return }
+        selectedIssueStatus = statuses.first(where: { $0.caseInsensitiveCompare("doing") == .orderedSame }) ?? statuses.first ?? "none"
+    }
+
     private var issuesSection: some View {
         Group {
             if !settings.isConfigured {
@@ -584,6 +651,7 @@ struct MenuBarContentView: View {
                         }
                     }
                 }
+                .scrollIndicators(.never)
             }
         }
     }

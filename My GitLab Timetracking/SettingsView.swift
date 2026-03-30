@@ -23,7 +23,14 @@ struct SettingsView: View {
                 TextField("OAuth application ID", text: $settings.oauthClientID)
                     .textFieldStyle(.roundedBorder)
 
+                TextField("Group path for statuses (optional)", text: $settings.gitLabGroupPath)
+                    .textFieldStyle(.roundedBorder)
+
                 Text("Register a GitLab OAuth application for a public client with redirect URI `\(GitLabAuthManager.redirectURI.absoluteString)` and scope `api`.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("If set, the create-issue project picker is scoped to this GitLab group path, for example `my-group` or `my-group/platform`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
