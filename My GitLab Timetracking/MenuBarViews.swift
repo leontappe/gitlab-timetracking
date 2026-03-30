@@ -30,6 +30,8 @@ struct MenuBarContentView: View {
     @State private var isCreateExpanded = false
     @State private var isProjectListExpanded = false
     @State private var projectSearch = ""
+    @State private var highlightedProjectID: Int?
+    @FocusState private var isProjectSearchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -186,57 +188,76 @@ struct MenuBarContentView: View {
     }
 
     private var projectSelectionView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if isProjectListExpanded {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Search projects", text: $projectSearch)
-                            .textFieldStyle(.plain)
-                        if projectManager.isLoadingProjects {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        Button {
-                            isProjectListExpanded = false
-                            projectSearch = ""
-                        } label: {
-                            Image(systemName: "chevron.up")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+        ZStack(alignment: .topLeading) {
+            projectSelectorField
 
-                    projectResultsView
-                }
-            } else {
-                Button {
-                    isProjectListExpanded = true
-                    projectManager.loadProjectsOnDemand()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Project")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(selectedProjectLabel)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
+            if isProjectListExpanded {
+                projectResultsView
+                    .padding(.top, 50)
+                    .zIndex(1)
             }
+        }
+        .zIndex(10)
+        .onChange(of: projectSearch) { _, _ in
+            highlightedProjectID = displayedProjects.first?.id
+        }
+    }
+
+    private var projectSelectorField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            if isProjectListExpanded {
+                TextField("Search projects", text: $projectSearch)
+                    .textFieldStyle(.plain)
+                    .focused($isProjectSearchFocused)
+                    .onSubmit {
+                        selectHighlightedProject()
+                    }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Project")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(selectedProjectLabel)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+            }
+
+            Spacer()
+
+            if projectManager.isLoadingProjects {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Button {
+                if isProjectListExpanded {
+                    closeProjectSelector()
+                } else {
+                    openProjectSelector()
+                }
+            } label: {
+                Image(systemName: isProjectListExpanded ? "chevron.up" : "chevron.down")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(Color(isProjectListExpanded ? NSColor.textBackgroundColor : NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isProjectListExpanded {
+                openProjectSelector()
+            }
+        }
+        .onMoveCommand(perform: handleProjectMoveCommand)
+        .onExitCommand {
+            closeProjectSelector()
         }
     }
 
@@ -263,29 +284,37 @@ struct MenuBarContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(displayedProjects), id: \.id) { project in
-                            projectRow(project)
-                            if project.id != displayedProjects.last?.id {
-                                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(displayedProjects), id: \.id) { project in
+                                projectRow(project, isHighlighted: project.id == highlightedProjectID)
+                                    .id(project.id)
+                                if project.id != displayedProjects.last?.id {
+                                    Divider()
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onChange(of: highlightedProjectID) { _, newValue in
+                        guard let newValue else { return }
+                        withAnimation(.easeInOut(duration: 0.1)) {
+                            proxy.scrollTo(newValue, anchor: .center)
+                        }
+                    }
                 }
-                .frame(minHeight: 44, maxHeight: 220)
+                .frame(height: min(CGFloat(displayedProjects.count) * 44, 220))
             }
         }
         .background(Color(NSColor.textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
     }
 
-    private func projectRow(_ project: GitLabProject) -> some View {
+    private func projectRow(_ project: GitLabProject, isHighlighted: Bool) -> some View {
         Button {
-            projectManager.selectProject(id: project.id)
-            isProjectListExpanded = false
-            projectSearch = ""
+            chooseProject(project.id)
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -294,6 +323,8 @@ struct MenuBarContentView: View {
                     Text(project.nameWithNamespace)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
                 }
                 Spacer()
                 if project.id == projectManager.selectedProjectID {
@@ -304,6 +335,7 @@ struct MenuBarContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
+            .background(isHighlighted ? Color.accentColor.opacity(0.12) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -383,6 +415,52 @@ struct MenuBarContentView: View {
 
     private var displayedProjects: [GitLabProject] {
         Array(filteredProjects.prefix(25))
+    }
+
+    private func openProjectSelector() {
+        isProjectListExpanded = true
+        projectManager.loadProjectsOnDemand()
+        highlightedProjectID = projectManager.selectedProjectID ?? displayedProjects.first?.id
+        isProjectSearchFocused = true
+    }
+
+    private func closeProjectSelector() {
+        isProjectListExpanded = false
+        projectSearch = ""
+        highlightedProjectID = nil
+        isProjectSearchFocused = false
+    }
+
+    private func chooseProject(_ id: Int) {
+        projectManager.selectProject(id: id)
+        closeProjectSelector()
+    }
+
+    private func selectHighlightedProject() {
+        guard let highlightedProjectID else { return }
+        chooseProject(highlightedProjectID)
+    }
+
+    private func handleProjectMoveCommand(_ direction: MoveCommandDirection) {
+        guard isProjectListExpanded else { return }
+
+        switch direction {
+        case .down:
+            moveProjectHighlight(delta: 1)
+        case .up:
+            moveProjectHighlight(delta: -1)
+        default:
+            break
+        }
+    }
+
+    private func moveProjectHighlight(delta: Int) {
+        guard !displayedProjects.isEmpty else { return }
+
+        let ids = displayedProjects.map(\.id)
+        let currentIndex = highlightedProjectID.flatMap { ids.firstIndex(of: $0) } ?? -1
+        let nextIndex = min(max(currentIndex + delta, 0), ids.count - 1)
+        highlightedProjectID = ids[nextIndex]
     }
 
     private var selectedProjectLabel: String {
