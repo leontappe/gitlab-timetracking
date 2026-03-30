@@ -194,6 +194,10 @@ struct MenuBarContentView: View {
                             .foregroundStyle(.secondary)
                         TextField("Search projects", text: $projectSearch)
                             .textFieldStyle(.plain)
+                        if projectManager.isLoadingProjects {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                         Button {
                             isProjectListExpanded = false
                             projectSearch = ""
@@ -241,16 +245,7 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             Divider()
 
-            if projectManager.isLoadingProjects {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Loading projects…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(16)
-            } else if let projectErrorMessage = projectManager.projectErrorMessage, projectManager.projects.isEmpty {
+            if let projectErrorMessage = projectManager.projectErrorMessage, projectManager.projects.isEmpty, !projectManager.isLoadingProjects {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(projectErrorMessage)
                         .font(.caption)
@@ -261,7 +256,7 @@ struct MenuBarContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-            } else if filteredProjects.isEmpty {
+            } else if filteredProjects.isEmpty, !projectManager.isLoadingProjects {
                 Text(projectSearch.isEmpty ? "No projects available." : "No matching projects.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -269,16 +264,17 @@ struct MenuBarContentView: View {
                     .padding(12)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(filteredProjects), id: \.id) { project in
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(displayedProjects), id: \.id) { project in
                             projectRow(project)
-                            if project.id != filteredProjects.last?.id {
+                            if project.id != displayedProjects.last?.id {
                                 Divider()
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 180)
+                .frame(minHeight: 44, maxHeight: 220)
             }
         }
         .background(Color(NSColor.textBackgroundColor))
@@ -383,6 +379,10 @@ struct MenuBarContentView: View {
             project.name.localizedCaseInsensitiveContains(query)
                 || project.nameWithNamespace.localizedCaseInsensitiveContains(query)
         }
+    }
+
+    private var displayedProjects: [GitLabProject] {
+        Array(filteredProjects.prefix(25))
     }
 
     private var selectedProjectLabel: String {

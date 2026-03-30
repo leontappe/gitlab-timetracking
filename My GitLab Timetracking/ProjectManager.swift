@@ -183,7 +183,11 @@ final class ProjectManager: ObservableObject {
             let lastSelectedProjectID = settings.lastSelectedProjectID,
             projects.contains(where: { $0.id == lastSelectedProjectID }) {
             selectedProjectID = lastSelectedProjectID
-        } else {
+        } else if
+            let selectedProjectID,
+            projects.contains(where: { $0.id == selectedProjectID }) {
+            return
+        } else if selectedProjectID == nil {
             selectedProjectID = orderedProjects.first?.id
         }
     }
