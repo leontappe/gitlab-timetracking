@@ -64,6 +64,9 @@ final class TrackingManager: ObservableObject {
         let remainingIssues = issues.filter { issue in
             !recentIDs.contains(issue.id)
         }
+        .sorted { left, right in
+            left.updatedAt > right.updatedAt
+        }
 
         return recentIssues + remainingIssues
     }

@@ -20,6 +20,7 @@ struct GitLabIssue: Codable, Identifiable, Hashable {
     let projectID: Int
     let title: String
     let webURL: URL
+    let updatedAt: Date
     let references: References
 
     enum CodingKeys: String, CodingKey {
@@ -29,6 +30,7 @@ struct GitLabIssue: Codable, Identifiable, Hashable {
         case references
         case projectID = "project_id"
         case webURL = "web_url"
+        case updatedAt = "updated_at"
     }
 }
 
@@ -123,9 +125,11 @@ enum GitLabAPIError: LocalizedError {
 
 actor GitLabAPI {
     private let session: URLSession
+    private let decoder: JSONDecoder
 
     init(session: URLSession = .shared) {
         self.session = session
+        self.decoder = Self.makeDecoder()
     }
 
     func fetchAssignedIssues(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
@@ -141,7 +145,7 @@ actor GitLabAPI {
 
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder().decode([GitLabIssue].self, from: data)
+        return try decoder.decode([GitLabIssue].self, from: data)
     }
 
     func fetchCurrentUser(configuration: AuthorizedGitLabConfiguration) async throws -> GitLabUser {
@@ -236,6 +240,28 @@ actor GitLabAPI {
         let (data, response) = try await session.data(for: request)
         _ = try validate(response: response, data: data)
         return try JSONDecoder().decode(GitLabCreatedIssue.self, from: data)
+    }
+
+    private static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let standardFormatter = ISO8601DateFormatter()
+        standardFormatter.formatOptions = [.withInternetDateTime]
+
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+
+            if let date = fractionalFormatter.date(from: value) ?? standardFormatter.date(from: value) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(value)")
+        }
+
+        return decoder
     }
 
     func addIssueQuickActionNote(

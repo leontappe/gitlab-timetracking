@@ -202,13 +202,21 @@ struct MenuBarContentView: View {
             HStack(alignment: .center, spacing: 12) {
                 Toggle("Assign to me", isOn: $assignIssueToMe)
 
-                Picker("Status", selection: $selectedIssueStatus) {
-                    ForEach(issueStatuses, id: \.self) { status in
-                        Text(status == "none" ? "No status" : status.capitalized)
-                            .tag(status)
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    Text("Status")
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $selectedIssueStatus) {
+                        ForEach(issueStatuses, id: \.self) { status in
+                            Text(status == "none" ? "No status" : status.capitalized)
+                                .tag(status)
+                        }
                     }
+                    .labelsHidden()
+                    .frame(width: 180)
                 }
-                .frame(maxWidth: 180)
             }
 
             if let errorMessage = issueStatusManager.errorMessage {
@@ -500,6 +508,9 @@ struct MenuBarContentView: View {
             guard let createdIssue else { return }
             newIssueTitle = ""
             newIssueDescription = ""
+            closeProjectSelector()
+            isCreateExpanded = false
+            await tracker.refreshIssues()
             NSWorkspace.shared.open(createdIssue.webURL)
         }
     }
