@@ -119,7 +119,12 @@ final class ProjectManager: ObservableObject {
         settings.rememberSelectedProject(id: id)
     }
 
-    func createIssue(title: String, description: String) async -> GitLabCreatedIssue? {
+    func createIssue(
+        title: String,
+        description: String,
+        assignToCurrentUser: Bool,
+        statusLabel: String?
+    ) async -> GitLabCreatedIssue? {
         guard let projectID = selectedProjectID else {
             projectErrorMessage = "Select a project first."
             return nil
@@ -139,6 +144,8 @@ final class ProjectManager: ObservableObject {
                 projectID: projectID,
                 title: title,
                 description: description.isEmpty ? nil : description,
+                assigneeID: assignToCurrentUser ? authManager.currentUser?.id : nil,
+                labels: statusLabel.map { [$0] } ?? [],
                 configuration: configuration
             )
             settings.rememberSelectedProject(id: projectID)

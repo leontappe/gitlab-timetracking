@@ -27,11 +27,14 @@ struct MenuBarContentView: View {
     @ObservedObject var tracker: TrackingManager
     @State private var newIssueTitle = ""
     @State private var newIssueDescription = ""
+    @State private var assignIssueToMe = true
+    @State private var selectedIssueStatus = "doing"
     @State private var isCreateExpanded = false
     @State private var isProjectListExpanded = false
     @State private var projectSearch = ""
     @State private var highlightedProjectID: Int?
     @FocusState private var isProjectSearchFocused: Bool
+    private let issueStatuses = ["doing", "todo", "review", "blocked", "done", "none"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -184,6 +187,15 @@ struct MenuBarContentView: View {
             TextField("Description (optional)", text: $newIssueDescription, axis: .vertical)
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
+
+            Toggle("Assign to me", isOn: $assignIssueToMe)
+
+            Picker("Status", selection: $selectedIssueStatus) {
+                ForEach(issueStatuses, id: \.self) { status in
+                    Text(status == "none" ? "No status" : status.capitalized)
+                        .tag(status)
+                }
+            }
         }
     }
 
@@ -214,6 +226,22 @@ struct MenuBarContentView: View {
                     .focused($isProjectSearchFocused)
                     .onSubmit {
                         selectHighlightedProject()
+                    }
+                    .onKeyPress(.downArrow) {
+                        moveProjectHighlight(delta: 1)
+                        return .handled
+                    }
+                    .onKeyPress(.upArrow) {
+                        moveProjectHighlight(delta: -1)
+                        return .handled
+                    }
+                    .onKeyPress(.tab) {
+                        moveProjectHighlight(delta: 1)
+                        return .handled
+                    }
+                    .onKeyPress(.return) {
+                        selectHighlightedProject()
+                        return .handled
                     }
             } else {
                 VStack(alignment: .leading, spacing: 2) {
@@ -255,7 +283,6 @@ struct MenuBarContentView: View {
                 openProjectSelector()
             }
         }
-        .onMoveCommand(perform: handleProjectMoveCommand)
         .onExitCommand {
             closeProjectSelector()
         }
@@ -358,17 +385,9 @@ struct MenuBarContentView: View {
             .disabled(!authManager.isAuthenticated || projectManager.isLoadingProjects)
 
             Button("Create Issue") {
-                Task {
-                    let createdIssue = await projectManager.createIssue(
-                        title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
-                        description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
-                    guard let createdIssue else { return }
-                    newIssueTitle = ""
-                    newIssueDescription = ""
-                    NSWorkspace.shared.open(createdIssue.webURL)
-                }
+                createIssue()
             }
+            .keyboardShortcut(.return, modifiers: [.command])
             .disabled(
                 !authManager.isAuthenticated
                     || projectManager.selectedProjectID == nil
@@ -441,19 +460,6 @@ struct MenuBarContentView: View {
         chooseProject(highlightedProjectID)
     }
 
-    private func handleProjectMoveCommand(_ direction: MoveCommandDirection) {
-        guard isProjectListExpanded else { return }
-
-        switch direction {
-        case .down:
-            moveProjectHighlight(delta: 1)
-        case .up:
-            moveProjectHighlight(delta: -1)
-        default:
-            break
-        }
-    }
-
     private func moveProjectHighlight(delta: Int) {
         guard !displayedProjects.isEmpty else { return }
 
@@ -461,6 +467,21 @@ struct MenuBarContentView: View {
         let currentIndex = highlightedProjectID.flatMap { ids.firstIndex(of: $0) } ?? -1
         let nextIndex = min(max(currentIndex + delta, 0), ids.count - 1)
         highlightedProjectID = ids[nextIndex]
+    }
+
+    private func createIssue() {
+        Task {
+            let createdIssue = await projectManager.createIssue(
+                title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines),
+                assignToCurrentUser: assignIssueToMe,
+                statusLabel: selectedIssueStatus == "none" ? nil : selectedIssueStatus
+            )
+            guard let createdIssue else { return }
+            newIssueTitle = ""
+            newIssueDescription = ""
+            NSWorkspace.shared.open(createdIssue.webURL)
+        }
     }
 
     private var selectedProjectLabel: String {

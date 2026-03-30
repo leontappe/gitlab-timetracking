@@ -165,6 +165,8 @@ actor GitLabAPI {
         projectID: Int,
         title: String,
         description: String?,
+        assigneeID: Int?,
+        labels: [String],
         configuration: AuthorizedGitLabConfiguration
     ) async throws -> GitLabCreatedIssue {
         let request = try makeRequest(
@@ -173,7 +175,9 @@ actor GitLabAPI {
             method: "POST",
             bodyItems: [
                 URLQueryItem(name: "title", value: title),
-                URLQueryItem(name: "description", value: description)
+                URLQueryItem(name: "description", value: description),
+                URLQueryItem(name: "assignee_id", value: assigneeID.map(String.init)),
+                URLQueryItem(name: "labels", value: labels.isEmpty ? nil : labels.joined(separator: ","))
             ]
         )
 
