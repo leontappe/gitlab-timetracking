@@ -6,27 +6,40 @@
 //
 
 import SwiftUI
-import SwiftData
+import AppKit
 
 @main
 struct My_GitLab_TimetrackingApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var settings: AppSettings
+    @StateObject private var tracker: TrackingManager
 
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    init() {
+        let settings = AppSettings()
+        _settings = StateObject(wrappedValue: settings)
+        _tracker = StateObject(wrappedValue: TrackingManager(settings: settings))
+    }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra {
+            MenuBarContentView(settings: settings, tracker: tracker)
+                .frame(width: 380, height: 520)
+        } label: {
+            MenuBarLabelView(tracker: tracker)
         }
-        .modelContainer(sharedModelContainer)
+        .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView(settings: settings, tracker: tracker)
+                .frame(width: 520, height: 320)
+        }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        NotificationCoordinator.shared.configure()
     }
 }
