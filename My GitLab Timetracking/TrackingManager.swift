@@ -17,7 +17,7 @@ final class TrackingManager: ObservableObject {
 
     let checkpointMinutes = 20
 
-    private let settings: AppSettings
+    private let authManager: GitLabAuthManager
     private let api = GitLabAPI()
     private let sessionStore = SessionStore()
     private var checkpointTask: Task<Void, Never>?
@@ -29,8 +29,8 @@ final class TrackingManager: ObservableObject {
     @Published var errorMessage: String?
     @Published var infoMessage = "Configure GitLab to start."
 
-    init(settings: AppSettings) {
-        self.settings = settings
+    init(authManager: GitLabAuthManager) {
+        self.authManager = authManager
 
         NotificationCoordinator.shared.onContinue = { [weak self] in
             self?.continueAfterCheckpoint()
@@ -54,10 +54,17 @@ final class TrackingManager: ObservableObject {
     }
 
     func refreshIssues() async {
-        guard settings.isConfigured else {
+        guard authManager.settings.isConfigured else {
             issues = []
             errorMessage = nil
-            infoMessage = "Configure your GitLab base URL and personal access token in Settings."
+            infoMessage = "Configure your GitLab instance and OAuth application in Settings."
+            return
+        }
+
+        guard authManager.isAuthenticated else {
+            issues = []
+            errorMessage = nil
+            infoMessage = "Connect your GitLab account in Settings."
             return
         }
 
@@ -65,10 +72,7 @@ final class TrackingManager: ObservableObject {
         errorMessage = nil
 
         do {
-            guard let configuration = settings.configuration else {
-                throw GitLabAPIError.missingConfiguration
-            }
-
+            let configuration = try await authManager.currentAuthorization()
             issues = try await api.fetchAssignedIssues(configuration: configuration)
             lastRefreshAt = Date()
             infoMessage = issues.isEmpty ? "No currently assigned open issues." : "Assigned issues updated."
@@ -143,8 +147,18 @@ final class TrackingManager: ObservableObject {
     }
 
     func saveSettings() async {
-        settings.save()
+        authManager.settings.save()
         await refreshIssues()
+    }
+
+    func clearIssues() {
+        checkpointTask?.cancel()
+        checkpointTask = nil
+        issues = []
+        errorMessage = nil
+        activeSession = nil
+        sessionStore.clear()
+        infoMessage = "Connect your GitLab account in Settings."
     }
 
     private func scheduleCheckpoint(after interval: TimeInterval? = nil) {
@@ -182,10 +196,7 @@ final class TrackingManager: ObservableObject {
 
     private func book(issue: GitLabIssue, minutes: Int, followUp: String) async {
         do {
-            guard let configuration = settings.configuration else {
-                throw GitLabAPIError.missingConfiguration
-            }
-
+            let configuration = try await authManager.currentAuthorization()
             try await api.addSpentTime(issue: issue, duration: "\(minutes)m", configuration: configuration)
             errorMessage = nil
             infoMessage = followUp
@@ -214,6 +225,11 @@ final class TrackingManager: ObservableObject {
 
         if session.awaitingContinuation {
             infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
+            return
+        }
+
+        guard authManager.isAuthenticated else {
+            infoMessage = "Restore paused. Connect your GitLab account to continue \(session.issue.references.short)."
             return
         }
 

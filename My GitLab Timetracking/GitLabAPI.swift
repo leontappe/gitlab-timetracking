@@ -5,6 +5,11 @@
 
 import Foundation
 
+struct AuthorizedGitLabConfiguration {
+    let baseURL: URL
+    let accessToken: String
+}
+
 struct GitLabIssue: Codable, Identifiable, Hashable {
     struct References: Codable, Hashable {
         let short: String
@@ -27,15 +32,32 @@ struct GitLabIssue: Codable, Identifiable, Hashable {
     }
 }
 
+struct GitLabUser: Codable, Hashable {
+    let id: Int
+    let username: String
+    let name: String
+    let webURL: URL
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case username
+        case name
+        case webURL = "web_url"
+    }
+}
+
 enum GitLabAPIError: LocalizedError {
     case missingConfiguration
+    case notAuthenticated
     case invalidResponse
     case serverError(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            return "Configure the GitLab base URL and personal access token first."
+            return "Configure the GitLab base URL and OAuth application ID first."
+        case .notAuthenticated:
+            return "Connect your GitLab account first."
         case .invalidResponse:
             return "GitLab returned an unexpected response."
         case let .serverError(statusCode, message):
@@ -51,7 +73,7 @@ actor GitLabAPI {
         self.session = session
     }
 
-    func fetchAssignedIssues(configuration: GitLabConfiguration) async throws -> [GitLabIssue] {
+    func fetchAssignedIssues(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
         let request = try makeRequest(
             configuration: configuration,
             path: "/api/v4/issues",
@@ -67,7 +89,18 @@ actor GitLabAPI {
         return try JSONDecoder().decode([GitLabIssue].self, from: data)
     }
 
-    func addSpentTime(issue: GitLabIssue, duration: String, configuration: GitLabConfiguration) async throws {
+    func fetchCurrentUser(configuration: AuthorizedGitLabConfiguration) async throws -> GitLabUser {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/user"
+        )
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(GitLabUser.self, from: data)
+    }
+
+    func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
         let path = "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)/add_spent_time"
         let request = try makeRequest(
             configuration: configuration,
@@ -81,7 +114,7 @@ actor GitLabAPI {
     }
 
     private func makeRequest(
-        configuration: GitLabConfiguration,
+        configuration: AuthorizedGitLabConfiguration,
         path: String,
         method: String = "GET",
         queryItems: [URLQueryItem] = []
@@ -96,7 +129,7 @@ actor GitLabAPI {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue(configuration.personalAccessToken, forHTTPHeaderField: "PRIVATE-TOKEN")
+        request.setValue("Bearer \(configuration.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         return request
     }

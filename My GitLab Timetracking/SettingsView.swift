@@ -7,6 +7,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var authManager: GitLabAuthManager
     @ObservedObject var tracker: TrackingManager
 
     @State private var saveMessage: String?
@@ -18,12 +19,43 @@ struct SettingsView: View {
                 TextField("https://gitlab.example.com", text: $settings.gitLabBaseURL)
                     .textFieldStyle(.roundedBorder)
 
-                SecureField("Personal access token", text: $settings.personalAccessToken)
+                TextField("OAuth application ID", text: $settings.oauthClientID)
                     .textFieldStyle(.roundedBorder)
 
-                Text("The app uses the authenticated account and only shows issues assigned to that user.")
+                Text("Register a GitLab OAuth application for a public client with redirect URI `\(GitLabAuthManager.redirectURI.absoluteString)` and scope `api`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Account") {
+                if let currentUser = authManager.currentUser {
+                    Text("\(currentUser.name) (@\(currentUser.username))")
+                        .font(.body)
+                    Button("Disconnect Account") {
+                        authManager.signOut()
+                        tracker.clearIssues()
+                    }
+                } else {
+                    Button("Connect GitLab Account") {
+                        Task {
+                            await tracker.saveSettings()
+                            await authManager.signIn()
+                            await tracker.refreshIssues()
+                        }
+                    }
+                    .disabled(isSaving || !settings.isConfigured || authManager.isAuthenticating)
+
+                    if authManager.isAuthenticating {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if let authError = authManager.authError {
+                    Text(authError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
 
             Section("Time Tracking") {
@@ -38,6 +70,7 @@ struct SettingsView: View {
                         Task {
                             isSaving = true
                             await tracker.saveSettings()
+                            await authManager.refreshCurrentUser()
                             isSaving = false
                             saveMessage = tracker.errorMessage == nil ? "Settings saved." : nil
                         }

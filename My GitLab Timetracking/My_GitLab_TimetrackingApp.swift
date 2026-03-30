@@ -12,17 +12,20 @@ import AppKit
 struct My_GitLab_TimetrackingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var settings: AppSettings
+    @StateObject private var authManager: GitLabAuthManager
     @StateObject private var tracker: TrackingManager
 
     init() {
         let settings = AppSettings()
+        let authManager = GitLabAuthManager(settings: settings)
         _settings = StateObject(wrappedValue: settings)
-        _tracker = StateObject(wrappedValue: TrackingManager(settings: settings))
+        _authManager = StateObject(wrappedValue: authManager)
+        _tracker = StateObject(wrappedValue: TrackingManager(authManager: authManager))
     }
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarContentView(settings: settings, tracker: tracker)
+            MenuBarContentView(settings: settings, authManager: authManager, tracker: tracker)
                 .frame(width: 380, height: 520)
         } label: {
             MenuBarLabelView(tracker: tracker)
@@ -30,7 +33,7 @@ struct My_GitLab_TimetrackingApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(settings: settings, tracker: tracker)
+            SettingsView(settings: settings, authManager: authManager, tracker: tracker)
                 .frame(width: 520, height: 320)
         }
     }

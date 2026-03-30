@@ -8,25 +8,25 @@ import Combine
 
 struct GitLabConfiguration {
     let baseURL: URL
-    let personalAccessToken: String
+    let clientID: String
 }
 
 final class AppSettings: ObservableObject {
     private enum Keys {
         static let gitLabBaseURL = "gitlab.baseURL"
-        static let personalAccessToken = "gitlab.personalAccessToken"
+        static let oauthClientID = "gitlab.oauthClientID"
     }
 
     @Published var gitLabBaseURL: String
-    @Published var personalAccessToken: String
+    @Published var oauthClientID: String
 
     init(defaults: UserDefaults = .standard) {
         gitLabBaseURL = defaults.string(forKey: Keys.gitLabBaseURL) ?? ""
-        personalAccessToken = defaults.string(forKey: Keys.personalAccessToken) ?? ""
+        oauthClientID = defaults.string(forKey: Keys.oauthClientID) ?? ""
     }
 
     var isConfigured: Bool {
-        !normalizedBaseURLString.isEmpty && !personalAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !normalizedBaseURLString.isEmpty && !oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var normalizedBaseURLString: String {
@@ -49,12 +49,12 @@ final class AppSettings: ObservableObject {
 
         return GitLabConfiguration(
             baseURL: baseURL,
-            personalAccessToken: personalAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            clientID: oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
     func save(defaults: UserDefaults = .standard) {
         defaults.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
-        defaults.set(personalAccessToken.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.personalAccessToken)
+        defaults.set(oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.oauthClientID)
     }
 }

@@ -22,6 +22,7 @@ struct MenuBarLabelView: View {
 
 struct MenuBarContentView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var authManager: GitLabAuthManager
     @ObservedObject var tracker: TrackingManager
 
     var body: some View {
@@ -131,7 +132,13 @@ struct MenuBarContentView: View {
                 ContentUnavailableView(
                     "GitLab Not Configured",
                     systemImage: "gearshape.2",
-                    description: Text("Open Settings and enter your GitLab instance URL and a personal access token.")
+                    description: Text("Open Settings and enter your GitLab instance URL and OAuth application ID.")
+                )
+            } else if !authManager.isAuthenticated {
+                ContentUnavailableView(
+                    "GitLab Not Connected",
+                    systemImage: "person.crop.circle.badge.exclamationmark",
+                    description: Text("Open Settings and connect your GitLab account.")
                 )
             } else if tracker.isLoading {
                 VStack(spacing: 12) {
