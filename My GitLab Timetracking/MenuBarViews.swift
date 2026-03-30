@@ -28,6 +28,8 @@ struct MenuBarContentView: View {
     @State private var newIssueTitle = ""
     @State private var newIssueDescription = ""
     @State private var isCreateExpanded = false
+    @State private var isProjectListExpanded = false
+    @State private var projectSearch = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -137,91 +139,182 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             DisclosureGroup("Create New Issue", isExpanded: $isCreateExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
-                    if !authManager.isAuthenticated {
-                        Text("Connect your GitLab account to create issues.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if projectManager.projects.isEmpty && !projectManager.isLoadingProjects {
-                        Text("No cached projects yet. Refresh the project list.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Project", selection: Binding(
-                            get: { projectManager.selectedProjectID },
-                            set: { projectManager.selectProject(id: $0) }
-                        )) {
-                            ForEach(projectManager.orderedProjects) { project in
-                                Text(project.nameWithNamespace)
-                                    .tag(Optional(project.id))
-                            }
-                        }
-
-                        TextField("Issue title", text: $newIssueTitle)
-                            .textFieldStyle(.roundedBorder)
-
-                        TextField("Description (optional)", text: $newIssueDescription, axis: .vertical)
-                            .lineLimit(3...6)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    HStack {
-                        Button {
-                            Task {
-                                await projectManager.refreshProjects()
-                            }
-                        } label: {
-                            if projectManager.isLoadingProjects {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Text("Refresh Projects")
-                            }
-                        }
-                        .disabled(!authManager.isAuthenticated || projectManager.isLoadingProjects)
-
-                        Button("Create Issue") {
-                            Task {
-                                let createdIssue = await projectManager.createIssue(
-                                    title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-                                )
-                                guard let createdIssue else { return }
-                                newIssueTitle = ""
-                                newIssueDescription = ""
-                                NSWorkspace.shared.open(createdIssue.webURL)
-                            }
-                        }
-                        .disabled(
-                            !authManager.isAuthenticated
-                                || projectManager.selectedProjectID == nil
-                                || newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                || projectManager.isCreatingIssue
-                        )
-
-                        Spacer()
-                    }
-
-                    if let lastProjectsRefreshAt = projectManager.lastProjectsRefreshAt {
-                        Text("Projects cached \(lastProjectsRefreshAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let creationMessage = projectManager.creationMessage {
-                        Text(creationMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let projectErrorMessage = projectManager.projectErrorMessage {
-                        Text(projectErrorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                    createIssueContent
+                    createIssueActions
+                    createIssueStatus
                 }
                 .padding(.top, 8)
             }
         }
+    }
+
+    @ViewBuilder
+    private var createIssueContent: some View {
+        if !authManager.isAuthenticated {
+            Text("Connect your GitLab account to create issues.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if projectManager.projects.isEmpty && !projectManager.isLoadingProjects {
+            Text("No cached projects yet. Refresh the project list.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            projectSelectionView
+
+            TextField("Issue title", text: $newIssueTitle)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("Description (optional)", text: $newIssueDescription, axis: .vertical)
+                .lineLimit(3...6)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private var projectSelectionView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isProjectListExpanded.toggle()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Project")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(selectedProjectLabel)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: isProjectListExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+
+            if isProjectListExpanded {
+                TextField("Search projects", text: $projectSearch)
+                    .textFieldStyle(.roundedBorder)
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(filteredProjects), id: \.id) { project in
+                            projectRow(project)
+                        }
+                    }
+                }
+                .frame(maxHeight: 180)
+            }
+        }
+    }
+
+    private func projectRow(_ project: GitLabProject) -> some View {
+        Button {
+            projectManager.selectProject(id: project.id)
+            isProjectListExpanded = false
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project.name)
+                        .foregroundStyle(.primary)
+                    Text(project.nameWithNamespace)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if project.id == projectManager.selectedProjectID {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var createIssueActions: some View {
+        HStack {
+            Button {
+                Task {
+                    await projectManager.refreshProjects()
+                }
+            } label: {
+                if projectManager.isLoadingProjects {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Refresh Projects")
+                }
+            }
+            .disabled(!authManager.isAuthenticated || projectManager.isLoadingProjects)
+
+            Button("Create Issue") {
+                Task {
+                    let createdIssue = await projectManager.createIssue(
+                        title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                        description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                    guard let createdIssue else { return }
+                    newIssueTitle = ""
+                    newIssueDescription = ""
+                    NSWorkspace.shared.open(createdIssue.webURL)
+                }
+            }
+            .disabled(
+                !authManager.isAuthenticated
+                    || projectManager.selectedProjectID == nil
+                    || newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || projectManager.isCreatingIssue
+            )
+
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var createIssueStatus: some View {
+        if let lastProjectsRefreshAt = projectManager.lastProjectsRefreshAt {
+            Text("Projects cached \(lastProjectsRefreshAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+
+        if let creationMessage = projectManager.creationMessage {
+            Text(creationMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        if let projectErrorMessage = projectManager.projectErrorMessage {
+            Text(projectErrorMessage)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private var filteredProjects: [GitLabProject] {
+        let query = projectSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            return projectManager.orderedProjects
+        }
+
+        return projectManager.orderedProjects.filter { project in
+            project.name.localizedCaseInsensitiveContains(query)
+                || project.nameWithNamespace.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var selectedProjectLabel: String {
+        guard
+            let selectedProjectID = projectManager.selectedProjectID,
+            let selectedProject = projectManager.projects.first(where: { $0.id == selectedProjectID })
+        else {
+            return "Choose a project"
+        }
+
+        return selectedProject.nameWithNamespace
     }
 
     private var issuesSection: some View {
