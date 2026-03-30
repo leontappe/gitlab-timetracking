@@ -5,8 +5,8 @@
 
 import Foundation
 
-struct GitLabIssue: Decodable, Identifiable, Hashable {
-    struct References: Decodable, Hashable {
+struct GitLabIssue: Codable, Identifiable, Hashable {
+    struct References: Codable, Hashable {
         let short: String
     }
 

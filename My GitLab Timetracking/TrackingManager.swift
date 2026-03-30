@@ -19,6 +19,7 @@ final class TrackingManager: ObservableObject {
 
     private let settings: AppSettings
     private let api = GitLabAPI()
+    private let sessionStore = SessionStore()
     private var checkpointTask: Task<Void, Never>?
     @Published private(set) var lastRefreshAt: Date?
 
@@ -36,6 +37,10 @@ final class TrackingManager: ObservableObject {
         }
         NotificationCoordinator.shared.onStop = { [weak self] in
             self?.finishAwaitingSession()
+        }
+
+        Task {
+            await restorePersistedSessionIfNeeded()
         }
     }
 
@@ -88,6 +93,7 @@ final class TrackingManager: ObservableObject {
         errorMessage = nil
         infoMessage = "Tracking \(issue.references.short)."
         scheduleCheckpoint()
+        persistActiveSession()
     }
 
     func stopTracking() {
@@ -98,6 +104,7 @@ final class TrackingManager: ObservableObject {
         guard let session = activeSession else { return }
         let pendingMinutes = session.awaitingContinuation ? 0 : minutesSinceLastCheckpoint(session: session)
         activeSession = nil
+        sessionStore.clear()
 
         guard pendingMinutes > 0 else {
             infoMessage = "Stopped tracking \(session.issue.references.short)."
@@ -120,6 +127,7 @@ final class TrackingManager: ObservableObject {
         activeSession = session
         infoMessage = "Continuing \(session.issue.references.short)."
         scheduleCheckpoint()
+        persistActiveSession()
     }
 
     func finishAwaitingSession() {
@@ -131,6 +139,7 @@ final class TrackingManager: ObservableObject {
             infoMessage = "Tracked 20 minutes on \(session.issue.references.short)."
         }
         activeSession = nil
+        sessionStore.clear()
     }
 
     func saveSettings() async {
@@ -138,15 +147,16 @@ final class TrackingManager: ObservableObject {
         await refreshIssues()
     }
 
-    private func scheduleCheckpoint() {
+    private func scheduleCheckpoint(after interval: TimeInterval? = nil) {
         checkpointTask?.cancel()
 
         checkpointTask = Task { [weak self] in
             guard let self else { return }
-            let interval = UInt64(checkpointMinutes * 60) * 1_000_000_000
+            let seconds = interval ?? TimeInterval(checkpointMinutes * 60)
+            let nanoseconds = UInt64(max(seconds, 1) * 1_000_000_000)
 
             do {
-                try await Task.sleep(nanoseconds: interval)
+                try await Task.sleep(nanoseconds: nanoseconds)
             } catch {
                 return
             }
@@ -161,6 +171,7 @@ final class TrackingManager: ObservableObject {
         checkpointTask = nil
         session.awaitingContinuation = true
         activeSession = session
+        persistActiveSession()
 
         await book(issue: session.issue, minutes: checkpointMinutes, followUp: "20 minutes added to \(session.issue.references.short).")
 
@@ -185,5 +196,59 @@ final class TrackingManager: ObservableObject {
 
     private func minutesSinceLastCheckpoint(session: Session) -> Int {
         max(1, Int(Date().timeIntervalSince(session.lastCheckpointAt) / 60))
+    }
+
+    private func restorePersistedSessionIfNeeded() async {
+        guard let persisted = sessionStore.load() else {
+            return
+        }
+
+        var session = Session(
+            issue: persisted.issue,
+            startedAt: persisted.startedAt,
+            lastCheckpointAt: persisted.lastCheckpointAt,
+            awaitingContinuation: persisted.awaitingContinuation
+        )
+
+        activeSession = session
+
+        if session.awaitingContinuation {
+            infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
+            return
+        }
+
+        let elapsed = Date().timeIntervalSince(session.lastCheckpointAt)
+        let checkpointInterval = TimeInterval(checkpointMinutes * 60)
+
+        if elapsed >= checkpointInterval {
+            session.awaitingContinuation = true
+            activeSession = session
+            persistActiveSession()
+            await book(issue: session.issue, minutes: checkpointMinutes, followUp: "20 minutes added to \(session.issue.references.short).")
+
+            guard activeSession != nil else { return }
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
+            infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
+            return
+        }
+
+        infoMessage = "Restored tracking for \(session.issue.references.short)."
+        scheduleCheckpoint(after: checkpointInterval - elapsed)
+    }
+
+    private func persistActiveSession() {
+        guard let activeSession else {
+            sessionStore.clear()
+            return
+        }
+
+        sessionStore.save(
+            PersistedSession(
+                issue: activeSession.issue,
+                startedAt: activeSession.startedAt,
+                lastCheckpointAt: activeSession.lastCheckpointAt,
+                awaitingContinuation: activeSession.awaitingContinuation
+            )
+        )
     }
 }
