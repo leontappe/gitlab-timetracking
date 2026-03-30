@@ -122,8 +122,7 @@ final class ProjectManager: ObservableObject {
     func createIssue(
         title: String,
         description: String,
-        assignToCurrentUser: Bool,
-        statusLabel: String?
+        assignToCurrentUser: Bool
     ) async -> GitLabCreatedIssue? {
         guard let projectID = selectedProjectID else {
             projectErrorMessage = "Select a project first."
@@ -147,15 +146,6 @@ final class ProjectManager: ObservableObject {
                 assigneeID: assignToCurrentUser ? authManager.currentUser?.id : nil,
                 configuration: configuration
             )
-
-            if let statusLabel {
-                try await api.addIssueQuickActionNote(
-                    projectID: projectID,
-                    issueIID: issue.iid,
-                    body: "/status \(statusLabel.trimmingCharacters(in: .whitespacesAndNewlines))",
-                    configuration: configuration
-                )
-            }
 
             settings.rememberSelectedProject(id: projectID)
             creationMessage = "Created \(issue.reference)."

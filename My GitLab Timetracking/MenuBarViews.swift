@@ -24,20 +24,15 @@ struct MenuBarContentView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var authManager: GitLabAuthManager
     @ObservedObject var projectManager: ProjectManager
-    @ObservedObject var issueStatusManager: IssueStatusManager
     @ObservedObject var tracker: TrackingManager
     @State private var newIssueTitle = ""
     @State private var newIssueDescription = ""
     @State private var assignIssueToMe = true
-    @State private var selectedIssueStatus = "doing"
     @State private var isCreateExpanded = false
     @State private var isProjectListExpanded = false
     @State private var projectSearch = ""
     @State private var highlightedProjectID: Int?
     @FocusState private var isProjectSearchFocused: Bool
-    private var issueStatuses: [String] {
-        availableIssueStatuses + ["none"]
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -66,20 +61,6 @@ struct MenuBarContentView: View {
                 await tracker.refreshIssues()
             }
             await projectManager.loadProjectsIfNeeded()
-            issueStatusManager.loadStatusesIfNeeded(forceRefresh: false)
-        }
-        .onChange(of: issueStatusManager.statuses) { _, statuses in
-            guard !statuses.isEmpty else { return }
-            let preferredStatus = statuses.first { $0.caseInsensitiveCompare("doing") == .orderedSame }
-            if selectedIssueStatus == "doing" || !statuses.contains(selectedIssueStatus) {
-                selectedIssueStatus = preferredStatus ?? statuses.first ?? "none"
-            }
-        }
-        .onChange(of: projectManager.selectedProjectID) { _, _ in
-            syncSelectedStatus()
-        }
-        .onChange(of: settings.gitLabGroupPath) { _, _ in
-            syncSelectedStatus()
         }
     }
 
@@ -205,34 +186,13 @@ struct MenuBarContentView: View {
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
 
-            HStack(alignment: .center, spacing: 12) {
+            HStack {
                 Toggle("Assign to me", isOn: $assignIssueToMe)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 8) {
-                    Text("Status")
-                        .foregroundStyle(.secondary)
-
-                    Picker("", selection: $selectedIssueStatus) {
-                        ForEach(issueStatuses, id: \.self) { status in
-                            Text(status == "none" ? "No status" : status.capitalized)
-                                .tag(status)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 180)
-                }
-            }
-
-            if let errorMessage = issueStatusManager.errorMessage {
-                Text("Status list fallback in use: \(errorMessage)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Spacer()
             }
 
             if !settings.normalizedGroupPath.isEmpty {
-                Text("Projects are scoped to `\(settings.normalizedGroupPath)` for status selection.")
+                Text("Projects are scoped to `\(settings.normalizedGroupPath)`.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -517,8 +477,7 @@ struct MenuBarContentView: View {
             let createdIssue = await projectManager.createIssue(
                 title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
                 description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines),
-                assignToCurrentUser: assignIssueToMe,
-                statusLabel: selectedIssueStatus == "none" ? nil : selectedIssueStatus
+                assignToCurrentUser: assignIssueToMe
             )
             guard let createdIssue else { return }
             newIssueTitle = ""
@@ -539,25 +498,6 @@ struct MenuBarContentView: View {
         }
 
         return selectedProject.nameWithNamespace
-    }
-
-    private var availableIssueStatuses: [String] {
-        guard
-            let selectedProject,
-            matchesConfiguredGroup(project: selectedProject)
-        else {
-            return settings.normalizedGroupPath.isEmpty ? issueStatusManager.statuses : []
-        }
-
-        return issueStatusManager.statuses
-    }
-
-    private var selectedProject: GitLabProject? {
-        guard let selectedProjectID = projectManager.selectedProjectID else {
-            return nil
-        }
-
-        return projectManager.projects.first(where: { $0.id == selectedProjectID })
     }
 
     private var scopedProjects: [GitLabProject] {
@@ -585,12 +525,6 @@ struct MenuBarContentView: View {
 
         let projectPath = project.pathWithNamespace.lowercased()
         return projectPath == configuredGroupPath || projectPath.hasPrefix(configuredGroupPath + "/")
-    }
-
-    private func syncSelectedStatus() {
-        let statuses = issueStatuses
-        guard !statuses.contains(selectedIssueStatus) else { return }
-        selectedIssueStatus = statuses.first(where: { $0.caseInsensitiveCompare("doing") == .orderedSame }) ?? statuses.first ?? "none"
     }
 
     private var issuesSection: some View {

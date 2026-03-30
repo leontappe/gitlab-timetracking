@@ -14,7 +14,6 @@ struct My_GitLab_TimetrackingApp: App {
     @StateObject private var settings: AppSettings
     @StateObject private var authManager: GitLabAuthManager
     @StateObject private var projectManager: ProjectManager
-    @StateObject private var issueStatusManager: IssueStatusManager
     @StateObject private var tracker: TrackingManager
 
     init() {
@@ -23,13 +22,12 @@ struct My_GitLab_TimetrackingApp: App {
         _settings = StateObject(wrappedValue: settings)
         _authManager = StateObject(wrappedValue: authManager)
         _projectManager = StateObject(wrappedValue: ProjectManager(authManager: authManager))
-        _issueStatusManager = StateObject(wrappedValue: IssueStatusManager(authManager: authManager))
         _tracker = StateObject(wrappedValue: TrackingManager(authManager: authManager))
     }
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarContentView(settings: settings, authManager: authManager, projectManager: projectManager, issueStatusManager: issueStatusManager, tracker: tracker)
+            MenuBarContentView(settings: settings, authManager: authManager, projectManager: projectManager, tracker: tracker)
                 .frame(width: 380, height: 520)
         } label: {
             MenuBarLabelView(tracker: tracker)

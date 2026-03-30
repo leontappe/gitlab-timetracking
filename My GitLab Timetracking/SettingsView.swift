@@ -14,6 +14,17 @@ struct SettingsView: View {
     @State private var saveMessage: String?
     @State private var isSaving = false
 
+    private var availableGroupPaths: [String] {
+        let projectGroups: [String] = projectManager.projects.compactMap { project in
+            let components = project.pathWithNamespace.split(separator: "/").dropLast()
+            guard !components.isEmpty else { return nil }
+            return components.joined(separator: "/")
+        }
+
+        let mergedGroups = Set(projectGroups).union(settings.gitLabGroupPath.isEmpty ? [] : [settings.gitLabGroupPath])
+        return mergedGroups.sorted()
+    }
+
     var body: some View {
         Form {
             Section("GitLab") {
@@ -23,14 +34,21 @@ struct SettingsView: View {
                 TextField("OAuth application ID", text: $settings.oauthClientID)
                     .textFieldStyle(.roundedBorder)
 
-                TextField("Group path for statuses (optional)", text: $settings.gitLabGroupPath)
-                    .textFieldStyle(.roundedBorder)
+                Picker("Group", selection: $settings.gitLabGroupPath) {
+                    Text("All visible projects")
+                        .tag("")
+
+                    ForEach(availableGroupPaths, id: \.self) { groupPath in
+                        Text(groupPath)
+                            .tag(groupPath)
+                    }
+                }
 
                 Text("Register a GitLab OAuth application for a public client with redirect URI `\(GitLabAuthManager.redirectURI.absoluteString)` and scope `api`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("If set, the create-issue project picker is scoped to this GitLab group path, for example `my-group` or `my-group/platform`.")
+                Text("If set, the create-issue project picker is scoped to this GitLab group path.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
