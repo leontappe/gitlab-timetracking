@@ -53,6 +53,16 @@ final class ProjectManager: ObservableObject {
         }
     }
 
+    func loadProjectsOnDemand() {
+        guard projects.isEmpty, authManager.isAuthenticated, !isLoadingProjects else {
+            return
+        }
+
+        Task {
+            await refreshProjects()
+        }
+    }
+
     func refreshProjects() async {
         guard authManager.settings.isConfigured else {
             projects = []

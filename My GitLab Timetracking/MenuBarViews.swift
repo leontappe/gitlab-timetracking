@@ -188,8 +188,11 @@ struct MenuBarContentView: View {
     private var projectSelectionView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isProjectListExpanded.toggle()
-                if !isProjectListExpanded {
+                let nextState = !isProjectListExpanded
+                isProjectListExpanded = nextState
+                if nextState {
+                    projectManager.loadProjectsOnDemand()
+                } else {
                     projectSearch = ""
                 }
             } label: {
@@ -224,17 +227,45 @@ struct MenuBarContentView: View {
 
                     Divider()
 
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(filteredProjects), id: \.id) { project in
-                                projectRow(project)
-                                if project.id != filteredProjects.last?.id {
-                                    Divider()
+                    if projectManager.isLoadingProjects {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                            Text("Loading projects…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(16)
+                    } else if let projectErrorMessage = projectManager.projectErrorMessage, projectManager.projects.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(projectErrorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            Button("Retry Loading Projects") {
+                                projectManager.loadProjectsOnDemand()
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                    } else if filteredProjects.isEmpty {
+                        Text(projectSearch.isEmpty ? "No projects available." : "No matching projects.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(filteredProjects), id: \.id) { project in
+                                    projectRow(project)
+                                    if project.id != filteredProjects.last?.id {
+                                        Divider()
+                                    }
                                 }
                             }
                         }
+                        .frame(maxHeight: 180)
                     }
-                    .frame(maxHeight: 180)
                 }
                 .background(Color(NSColor.textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
