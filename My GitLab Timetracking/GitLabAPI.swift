@@ -80,6 +80,27 @@ struct GitLabCreatedIssue: Codable, Hashable {
     }
 }
 
+private struct GraphQLResponse<DataType: Decodable>: Decodable {
+    struct GraphQLError: Decodable {
+        let message: String
+    }
+
+    let data: DataType?
+    let errors: [GraphQLError]?
+}
+
+private struct WorkItemAllowedStatusesQueryData: Decodable {
+    struct Connection: Decodable {
+        struct Node: Decodable {
+            let name: String
+        }
+
+        let nodes: [Node]
+    }
+
+    let workItemAllowedStatuses: Connection
+}
+
 enum GitLabAPIError: LocalizedError {
     case missingConfiguration
     case notAuthenticated
@@ -159,6 +180,39 @@ actor GitLabAPI {
         }
 
         return collectedProjects
+    }
+
+    func fetchAllowedIssueStatuses(configuration: AuthorizedGitLabConfiguration) async throws -> [String] {
+        let url = configuration.baseURL.appending(path: "/api/graphql")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(configuration.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let payload = [
+            "query": """
+            query WorkItemAllowedStatuses {
+              workItemAllowedStatuses(first: 100) {
+                nodes {
+                  name
+                }
+              }
+            }
+            """
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await session.data(for: request)
+        _ = try validate(response: response, data: data)
+
+        let decoded = try JSONDecoder().decode(GraphQLResponse<WorkItemAllowedStatusesQueryData>.self, from: data)
+        if let errorMessage = decoded.errors?.first?.message {
+            throw GitLabAPIError.serverError(statusCode: 400, message: errorMessage)
+        }
+
+        let names = decoded.data?.workItemAllowedStatuses.nodes.map(\.name) ?? []
+        return Array(NSOrderedSet(array: names)) as? [String] ?? names
     }
 
     func createIssue(

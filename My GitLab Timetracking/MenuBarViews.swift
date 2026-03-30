@@ -24,6 +24,7 @@ struct MenuBarContentView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var authManager: GitLabAuthManager
     @ObservedObject var projectManager: ProjectManager
+    @ObservedObject var issueStatusManager: IssueStatusManager
     @ObservedObject var tracker: TrackingManager
     @State private var newIssueTitle = ""
     @State private var newIssueDescription = ""
@@ -34,7 +35,9 @@ struct MenuBarContentView: View {
     @State private var projectSearch = ""
     @State private var highlightedProjectID: Int?
     @FocusState private var isProjectSearchFocused: Bool
-    private let issueStatuses = ["doing", "todo", "review", "blocked", "done", "none"]
+    private var issueStatuses: [String] {
+        issueStatusManager.statuses + ["none"]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -63,6 +66,14 @@ struct MenuBarContentView: View {
                 await tracker.refreshIssues()
             }
             await projectManager.loadProjectsIfNeeded()
+            issueStatusManager.loadStatusesIfNeeded(forceRefresh: false)
+        }
+        .onChange(of: issueStatusManager.statuses) { _, statuses in
+            guard !statuses.isEmpty else { return }
+            let preferredStatus = statuses.first { $0.caseInsensitiveCompare("doing") == .orderedSame }
+            if selectedIssueStatus == "doing" || !statuses.contains(selectedIssueStatus) {
+                selectedIssueStatus = preferredStatus ?? statuses.first ?? "none"
+            }
         }
     }
 
@@ -198,6 +209,12 @@ struct MenuBarContentView: View {
                     }
                 }
                 .frame(maxWidth: 180)
+            }
+
+            if let errorMessage = issueStatusManager.errorMessage {
+                Text("Status list fallback in use: \(errorMessage)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
