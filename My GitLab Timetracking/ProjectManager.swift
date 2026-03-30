@@ -152,7 +152,7 @@ final class ProjectManager: ObservableObject {
                 try await api.addIssueQuickActionNote(
                     projectID: projectID,
                     issueIID: issue.iid,
-                    body: #"/status "\#(statusLabel)""#,
+                    body: "/status \(statusLabel.trimmingCharacters(in: .whitespacesAndNewlines))",
                     configuration: configuration
                 )
             }
