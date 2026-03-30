@@ -145,9 +145,18 @@ final class ProjectManager: ObservableObject {
                 title: title,
                 description: description.isEmpty ? nil : description,
                 assigneeID: assignToCurrentUser ? authManager.currentUser?.id : nil,
-                labels: statusLabel.map { [$0] } ?? [],
                 configuration: configuration
             )
+
+            if let statusLabel {
+                try await api.addIssueQuickActionNote(
+                    projectID: projectID,
+                    issueIID: issue.iid,
+                    body: #"/status "\#(statusLabel)""#,
+                    configuration: configuration
+                )
+            }
+
             settings.rememberSelectedProject(id: projectID)
             creationMessage = "Created \(issue.reference)."
             return issue

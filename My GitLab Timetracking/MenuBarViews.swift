@@ -188,13 +188,16 @@ struct MenuBarContentView: View {
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
 
-            Toggle("Assign to me", isOn: $assignIssueToMe)
+            HStack(alignment: .center, spacing: 12) {
+                Toggle("Assign to me", isOn: $assignIssueToMe)
 
-            Picker("Status", selection: $selectedIssueStatus) {
-                ForEach(issueStatuses, id: \.self) { status in
-                    Text(status == "none" ? "No status" : status.capitalized)
-                        .tag(status)
+                Picker("Status", selection: $selectedIssueStatus) {
+                    ForEach(issueStatuses, id: \.self) { status in
+                        Text(status == "none" ? "No status" : status.capitalized)
+                            .tag(status)
+                    }
                 }
+                .frame(maxWidth: 180)
             }
         }
     }

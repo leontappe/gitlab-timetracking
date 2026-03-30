@@ -166,7 +166,6 @@ actor GitLabAPI {
         title: String,
         description: String?,
         assigneeID: Int?,
-        labels: [String],
         configuration: AuthorizedGitLabConfiguration
     ) async throws -> GitLabCreatedIssue {
         let request = try makeRequest(
@@ -176,14 +175,32 @@ actor GitLabAPI {
             bodyItems: [
                 URLQueryItem(name: "title", value: title),
                 URLQueryItem(name: "description", value: description),
-                URLQueryItem(name: "assignee_id", value: assigneeID.map(String.init)),
-                URLQueryItem(name: "labels", value: labels.isEmpty ? nil : labels.joined(separator: ","))
+                URLQueryItem(name: "assignee_id", value: assigneeID.map(String.init))
             ]
         )
 
         let (data, response) = try await session.data(for: request)
         _ = try validate(response: response, data: data)
         return try JSONDecoder().decode(GitLabCreatedIssue.self, from: data)
+    }
+
+    func addIssueQuickActionNote(
+        projectID: Int,
+        issueIID: Int,
+        body: String,
+        configuration: AuthorizedGitLabConfiguration
+    ) async throws {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/projects/\(projectID)/issues/\(issueIID)/notes",
+            method: "POST",
+            bodyItems: [
+                URLQueryItem(name: "body", value: body)
+            ]
+        )
+
+        let (data, response) = try await session.data(for: request)
+        _ = try validate(response: response, data: data)
     }
 
     func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
