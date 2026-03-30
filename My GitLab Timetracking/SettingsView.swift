@@ -8,6 +8,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var authManager: GitLabAuthManager
+    @ObservedObject var projectManager: ProjectManager
     @ObservedObject var tracker: TrackingManager
 
     @State private var saveMessage: String?
@@ -33,6 +34,7 @@ struct SettingsView: View {
                         .font(.body)
                     Button("Disconnect Account") {
                         authManager.signOut()
+                        projectManager.clearProjectState()
                         tracker.clearIssues()
                     }
                 } else {
@@ -40,6 +42,7 @@ struct SettingsView: View {
                         Task {
                             await tracker.saveSettings()
                             await authManager.signIn()
+                            await projectManager.refreshProjects()
                             await tracker.refreshIssues()
                         }
                     }
@@ -71,6 +74,7 @@ struct SettingsView: View {
                             isSaving = true
                             await tracker.saveSettings()
                             await authManager.refreshCurrentUser()
+                            projectManager.handleSettingsSaved()
                             isSaving = false
                             saveMessage = tracker.errorMessage == nil ? "Settings saved." : nil
                         }

@@ -15,6 +15,8 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let gitLabBaseURL = "gitlab.baseURL"
         static let oauthClientID = "gitlab.oauthClientID"
+        static let lastSelectedProjectID = "gitlab.lastSelectedProjectID"
+        static let recentProjectIDs = "gitlab.recentProjectIDs"
     }
 
     private let defaults: UserDefaults
@@ -23,6 +25,8 @@ final class AppSettings: ObservableObject {
 
     @Published var gitLabBaseURL: String
     @Published var oauthClientID: String
+    @Published private(set) var lastSelectedProjectID: Int?
+    @Published private(set) var recentProjectIDs: [Int]
 
     init(
         defaults: UserDefaults = .standard,
@@ -33,13 +37,19 @@ final class AppSettings: ObservableObject {
 
         let localBaseURL = defaults.string(forKey: Keys.gitLabBaseURL) ?? ""
         let localClientID = defaults.string(forKey: Keys.oauthClientID) ?? ""
+        let localLastProjectID = defaults.object(forKey: Keys.lastSelectedProjectID) as? Int
+        let localRecentProjectIDs = defaults.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
+        let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
+        let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
 
         gitLabBaseURL = remoteBaseURL.isEmpty ? localBaseURL : remoteBaseURL
         oauthClientID = remoteClientID.isEmpty ? localClientID : remoteClientID
+        lastSelectedProjectID = remoteLastProjectID ?? localLastProjectID
+        recentProjectIDs = remoteRecentProjectIDs.isEmpty ? localRecentProjectIDs : remoteRecentProjectIDs
 
-        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty {
+        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty {
             save()
         }
 
@@ -85,10 +95,21 @@ final class AppSettings: ObservableObject {
 
         defaults.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
         defaults.set(normalizedClientID, forKey: Keys.oauthClientID)
+        defaults.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
+        defaults.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
 
         cloudStore.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
         cloudStore.set(normalizedClientID, forKey: Keys.oauthClientID)
+        cloudStore.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
+        cloudStore.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
         cloudStore.synchronize()
+    }
+
+    func rememberSelectedProject(id: Int) {
+        lastSelectedProjectID = id
+        recentProjectIDs = [id] + recentProjectIDs.filter { $0 != id }
+        recentProjectIDs = Array(recentProjectIDs.prefix(5))
+        save()
     }
 
     private func handleCloudStoreChange(_ notification: Notification) {
@@ -100,7 +121,10 @@ final class AppSettings: ObservableObject {
             return
         }
 
-        if changedKeys.contains(Keys.gitLabBaseURL) || changedKeys.contains(Keys.oauthClientID) {
+        if changedKeys.contains(Keys.gitLabBaseURL)
+            || changedKeys.contains(Keys.oauthClientID)
+            || changedKeys.contains(Keys.lastSelectedProjectID)
+            || changedKeys.contains(Keys.recentProjectIDs) {
             applyCloudValues()
         }
     }
@@ -108,6 +132,8 @@ final class AppSettings: ObservableObject {
     private func applyCloudValues() {
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
+        let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
+        let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
 
         if gitLabBaseURL != remoteBaseURL {
             gitLabBaseURL = remoteBaseURL
@@ -117,7 +143,17 @@ final class AppSettings: ObservableObject {
             oauthClientID = remoteClientID
         }
 
+        if lastSelectedProjectID != remoteLastProjectID {
+            lastSelectedProjectID = remoteLastProjectID
+        }
+
+        if recentProjectIDs != remoteRecentProjectIDs {
+            recentProjectIDs = remoteRecentProjectIDs
+        }
+
         defaults.set(remoteBaseURL, forKey: Keys.gitLabBaseURL)
         defaults.set(remoteClientID, forKey: Keys.oauthClientID)
+        defaults.set(remoteLastProjectID, forKey: Keys.lastSelectedProjectID)
+        defaults.set(remoteRecentProjectIDs, forKey: Keys.recentProjectIDs)
     }
 }

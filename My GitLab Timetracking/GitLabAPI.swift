@@ -46,6 +46,40 @@ struct GitLabUser: Codable, Hashable {
     }
 }
 
+struct GitLabProject: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let nameWithNamespace: String
+    let webURL: URL
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case nameWithNamespace = "name_with_namespace"
+        case webURL = "web_url"
+    }
+}
+
+struct GitLabCreatedIssue: Codable, Hashable {
+    let id: Int
+    let iid: Int
+    let title: String
+    let webURL: URL
+    let references: GitLabIssue.References
+
+    var reference: String {
+        references.short
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case iid
+        case title
+        case webURL = "web_url"
+        case references
+    }
+}
+
 enum GitLabAPIError: LocalizedError {
     case missingConfiguration
     case notAuthenticated
@@ -100,6 +134,54 @@ actor GitLabAPI {
         return try JSONDecoder().decode(GitLabUser.self, from: data)
     }
 
+    func fetchProjects(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabProject] {
+        var collectedProjects: [GitLabProject] = []
+        var nextPage = "1"
+
+        while !nextPage.isEmpty {
+            let request = try makeRequest(
+                configuration: configuration,
+                path: "/api/v4/projects",
+                queryItems: [
+                    URLQueryItem(name: "simple", value: "true"),
+                    URLQueryItem(name: "archived", value: "false"),
+                    URLQueryItem(name: "order_by", value: "path"),
+                    URLQueryItem(name: "sort", value: "asc"),
+                    URLQueryItem(name: "per_page", value: "100"),
+                    URLQueryItem(name: "page", value: nextPage)
+                ]
+            )
+
+            let (data, response) = try await session.data(for: request)
+            let httpResponse = try validate(response: response, data: data)
+            collectedProjects += try JSONDecoder().decode([GitLabProject].self, from: data)
+            nextPage = httpResponse.value(forHTTPHeaderField: "X-Next-Page") ?? ""
+        }
+
+        return collectedProjects
+    }
+
+    func createIssue(
+        projectID: Int,
+        title: String,
+        description: String?,
+        configuration: AuthorizedGitLabConfiguration
+    ) async throws -> GitLabCreatedIssue {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/projects/\(projectID)/issues",
+            method: "POST",
+            bodyItems: [
+                URLQueryItem(name: "title", value: title),
+                URLQueryItem(name: "description", value: description)
+            ]
+        )
+
+        let (data, response) = try await session.data(for: request)
+        _ = try validate(response: response, data: data)
+        return try JSONDecoder().decode(GitLabCreatedIssue.self, from: data)
+    }
+
     func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
         let path = "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)/add_spent_time"
         let request = try makeRequest(
@@ -117,7 +199,8 @@ actor GitLabAPI {
         configuration: AuthorizedGitLabConfiguration,
         path: String,
         method: String = "GET",
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        bodyItems: [URLQueryItem] = []
     ) throws -> URLRequest {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)
         components?.path = path
@@ -131,10 +214,20 @@ actor GitLabAPI {
         request.httpMethod = method
         request.setValue("Bearer \(configuration.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        if !bodyItems.isEmpty {
+            var bodyComponents = URLComponents()
+            bodyComponents.queryItems = bodyItems.filter { item in
+                item.value != nil
+            }
+            request.httpBody = bodyComponents.query?.data(using: .utf8)
+            request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        }
+
         return request
     }
 
-    private func validate(response: URLResponse, data: Data) throws {
+    private func validate(response: URLResponse, data: Data) throws -> HTTPURLResponse {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GitLabAPIError.invalidResponse
         }
@@ -143,5 +236,7 @@ actor GitLabAPI {
             let message = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw GitLabAPIError.serverError(statusCode: httpResponse.statusCode, message: message)
         }
+
+        return httpResponse
     }
 }
