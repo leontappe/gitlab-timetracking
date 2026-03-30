@@ -255,7 +255,7 @@ struct MenuBarContentView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(tracker.issues) { issue in
+                        ForEach(tracker.orderedIssues) { issue in
                             Button {
                                 tracker.startTracking(issue: issue)
                             } label: {

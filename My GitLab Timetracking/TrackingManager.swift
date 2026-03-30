@@ -18,6 +18,7 @@ final class TrackingManager: ObservableObject {
     let checkpointMinutes = 20
 
     private let authManager: GitLabAuthManager
+    private let settings: AppSettings
     private let api = GitLabAPI()
     private let sessionStore = SessionStore()
     private var checkpointTask: Task<Void, Never>?
@@ -31,6 +32,7 @@ final class TrackingManager: ObservableObject {
 
     init(authManager: GitLabAuthManager) {
         self.authManager = authManager
+        self.settings = authManager.settings
 
         NotificationCoordinator.shared.onContinue = { [weak self] in
             self?.continueAfterCheckpoint()
@@ -51,6 +53,19 @@ final class TrackingManager: ObservableObject {
 
     var activeIssue: GitLabIssue? {
         activeSession?.issue
+    }
+
+    var orderedIssues: [GitLabIssue] {
+        let recentIDs = settings.recentIssueIDs
+        let recentIssues = recentIDs.compactMap { id in
+            issues.first(where: { $0.id == id })
+        }
+
+        let remainingIssues = issues.filter { issue in
+            !recentIDs.contains(issue.id)
+        }
+
+        return recentIssues + remainingIssues
     }
 
     func refreshIssues() async {
@@ -96,6 +111,7 @@ final class TrackingManager: ObservableObject {
         )
         errorMessage = nil
         infoMessage = "Tracking \(issue.references.short)."
+        settings.rememberUsedIssue(id: issue.id)
         scheduleCheckpoint()
         persistActiveSession()
     }
