@@ -55,6 +55,32 @@ final class TrackingManager: ObservableObject {
         activeSession?.issue
     }
 
+    func currentCycleElapsed(for session: Session) -> TimeInterval {
+        guard !session.awaitingContinuation else { return 0 }
+        return max(0, Date().timeIntervalSince(session.startedAt))
+    }
+
+    func displayedTotalTrackedSeconds(for issue: GitLabIssue) -> Int {
+        let baseSeconds = issue.timeStats.totalTimeSpent
+        guard let activeSession, activeSession.issue.id == issue.id, !activeSession.awaitingContinuation else {
+            return baseSeconds
+        }
+
+        return baseSeconds + Int(currentCycleElapsed(for: activeSession))
+    }
+
+    func formattedDuration(seconds: Int) -> String {
+        let totalMinutes = max(0, seconds / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+
+        return "\(minutes)m"
+    }
+
     var orderedIssues: [GitLabIssue] {
         let recentIDs = settings.recentIssueIDs
         let recentIssues = recentIDs.compactMap { id in

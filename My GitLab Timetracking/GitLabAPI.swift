@@ -15,6 +15,14 @@ struct GitLabIssue: Codable, Identifiable, Hashable {
         let short: String
     }
 
+    struct TimeStats: Codable, Hashable {
+        let totalTimeSpent: Int
+
+        enum CodingKeys: String, CodingKey {
+            case totalTimeSpent = "total_time_spent"
+        }
+    }
+
     let id: Int
     let iid: Int
     let projectID: Int
@@ -22,12 +30,14 @@ struct GitLabIssue: Codable, Identifiable, Hashable {
     let webURL: URL
     let updatedAt: Date
     let references: References
+    let timeStats: TimeStats
 
     enum CodingKeys: String, CodingKey {
         case id
         case iid
         case title
         case references
+        case timeStats = "time_stats"
         case projectID = "project_id"
         case webURL = "web_url"
         case updatedAt = "updated_at"

@@ -129,6 +129,7 @@ struct SettingsView: View {
             }
 
             Section("Time Tracking") {
+                Toggle("Show worked time in menu bar", isOn: $settings.showTrackedTimeInMenuBar)
                 Text("Selecting an issue starts local tracking immediately. Every 20 minutes the app books 20 minutes to the issue in GitLab and asks whether to continue.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

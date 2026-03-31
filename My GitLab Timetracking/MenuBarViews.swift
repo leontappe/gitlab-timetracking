@@ -7,14 +7,37 @@ import SwiftUI
 import AppKit
 
 struct MenuBarLabelView: View {
+    @ObservedObject var settings: AppSettings
     @ObservedObject var tracker: TrackingManager
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: statusSymbolName)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(statusColor, .primary.opacity(0.2))
-            Text(statusLabel)
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let _ = context.date
+
+            HStack(spacing: 6) {
+                Image(systemName: statusSymbolName)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(statusColor, .primary.opacity(0.2))
+                Text(statusLabel)
+            }
+            .contextMenu {
+                if tracker.activeSession != nil {
+                    Button("Stop Tracking") {
+                        tracker.stopTracking()
+                    }
+                }
+
+                Button("Settings") {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+
+                Divider()
+
+                Button("Quit") {
+                    NSApp.terminate(nil)
+                }
+            }
         }
     }
 
@@ -32,6 +55,11 @@ struct MenuBarLabelView: View {
 
     private var statusLabel: String {
         if let issue = tracker.activeIssue {
+            if settings.showTrackedTimeInMenuBar {
+                let total = tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue))
+                return "\(issue.references.short) \(total)"
+            }
+
             return issue.references.short
         }
 
@@ -68,10 +96,7 @@ struct MenuBarContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-
-            if let session = tracker.activeSession {
-                activeSection(session: session)
-            }
+            trackingOverviewSection
 
             if let errorMessage = tracker.errorMessage {
                 Text(errorMessage)
@@ -127,6 +152,30 @@ struct MenuBarContentView: View {
     }
 
     @ViewBuilder
+    private var trackingOverviewSection: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let _ = context.date
+
+            if let session = tracker.activeSession {
+                activeSection(session: session)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No Active Tracking", systemImage: "pause.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Text("Select an assigned issue below to start tracking time.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color(NSColor.controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    @ViewBuilder
     private func activeSection(session: TrackingManager.Session) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking", systemImage: session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill")
@@ -143,6 +192,14 @@ struct MenuBarContentView: View {
                     Text(session.issue.title)
                         .font(.body)
                         .multilineTextAlignment(.leading)
+                    HStack(spacing: 12) {
+                        Label(currentCycleLabel(session: session), systemImage: session.awaitingContinuation ? "pause.circle" : "timer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Label(totalTrackedLabel(issue: session.issue), systemImage: "clock.badge.checkmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -579,6 +636,18 @@ struct MenuBarContentView: View {
         }
 
         return Color(red: 0.18, green: 0.62, blue: 0.33).opacity(0.35)
+    }
+
+    private func currentCycleLabel(session: TrackingManager.Session) -> String {
+        if session.awaitingContinuation {
+            return "Awaiting response"
+        }
+
+        return "Current: \(tracker.formattedDuration(seconds: Int(tracker.currentCycleElapsed(for: session))))"
+    }
+
+    private func totalTrackedLabel(issue: GitLabIssue) -> String {
+        "Total: \(tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue)))"
     }
 
     private var issuesSection: some View {

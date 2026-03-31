@@ -30,7 +30,7 @@ struct My_GitLab_TimetrackingApp: App {
             MenuBarContentView(settings: settings, authManager: authManager, projectManager: projectManager, tracker: tracker)
                 .frame(width: 380, height: 520)
         } label: {
-            MenuBarLabelView(tracker: tracker)
+            MenuBarLabelView(settings: settings, tracker: tracker)
         }
         .menuBarExtraStyle(.window)
 
