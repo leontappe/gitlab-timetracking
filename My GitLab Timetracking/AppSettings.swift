@@ -9,7 +9,7 @@ import Combine
 struct GitLabConfiguration {
     let baseURL: URL
     let clientID: String
-    let groupPath: String?
+    let groupPaths: [String]
 }
 
 final class AppSettings: ObservableObject {
@@ -17,6 +17,7 @@ final class AppSettings: ObservableObject {
         static let gitLabBaseURL = "gitlab.baseURL"
         static let oauthClientID = "gitlab.oauthClientID"
         static let gitLabGroupPath = "gitlab.groupPath"
+        static let gitLabGroupPaths = "gitlab.groupPaths"
         static let lastSelectedProjectID = "gitlab.lastSelectedProjectID"
         static let recentProjectIDs = "gitlab.recentProjectIDs"
         static let recentIssueIDs = "gitlab.recentIssueIDs"
@@ -28,7 +29,7 @@ final class AppSettings: ObservableObject {
 
     @Published var gitLabBaseURL: String
     @Published var oauthClientID: String
-    @Published var gitLabGroupPath: String
+    @Published private(set) var gitLabGroupPaths: [String]
     @Published private(set) var lastSelectedProjectID: Int?
     @Published private(set) var recentProjectIDs: [Int]
     @Published private(set) var recentIssueIDs: [Int]
@@ -43,24 +44,30 @@ final class AppSettings: ObservableObject {
         let localBaseURL = defaults.string(forKey: Keys.gitLabBaseURL) ?? ""
         let localClientID = defaults.string(forKey: Keys.oauthClientID) ?? ""
         let localGroupPath = defaults.string(forKey: Keys.gitLabGroupPath) ?? ""
+        let localGroupPaths = defaults.array(forKey: Keys.gitLabGroupPaths) as? [String] ?? []
         let localLastProjectID = defaults.object(forKey: Keys.lastSelectedProjectID) as? Int
         let localRecentProjectIDs = defaults.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let localRecentIssueIDs = defaults.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
         let remoteGroupPath = cloudStore.string(forKey: Keys.gitLabGroupPath) ?? ""
+        let remoteGroupPaths = cloudStore.array(forKey: Keys.gitLabGroupPaths) as? [String] ?? []
         let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
 
         gitLabBaseURL = remoteBaseURL.isEmpty ? localBaseURL : remoteBaseURL
         oauthClientID = remoteClientID.isEmpty ? localClientID : remoteClientID
-        gitLabGroupPath = remoteGroupPath.isEmpty ? localGroupPath : remoteGroupPath
+        gitLabGroupPaths = Self.resolveGroupPaths(
+            primary: remoteGroupPaths,
+            fallbackArray: localGroupPaths,
+            fallbackSingle: remoteGroupPath.isEmpty ? localGroupPath : remoteGroupPath
+        )
         lastSelectedProjectID = remoteLastProjectID ?? localLastProjectID
         recentProjectIDs = remoteRecentProjectIDs.isEmpty ? localRecentProjectIDs : remoteRecentProjectIDs
         recentIssueIDs = remoteRecentIssueIDs.isEmpty ? localRecentIssueIDs : remoteRecentIssueIDs
 
-        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || !gitLabGroupPath.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty {
+        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || !gitLabGroupPaths.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty {
             save()
         }
 
@@ -87,10 +94,14 @@ final class AppSettings: ObservableObject {
         URL(string: normalizedBaseURLString)
     }
 
-    var normalizedGroupPath: String {
-        gitLabGroupPath
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    var normalizedGroupPaths: [String] {
+        gitLabGroupPaths
+            .map { groupPath in
+                groupPath
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            }
+            .filter { !$0.isEmpty }
     }
 
     var configuration: GitLabConfiguration? {
@@ -104,28 +115,51 @@ final class AppSettings: ObservableObject {
         return GitLabConfiguration(
             baseURL: baseURL,
             clientID: oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines),
-            groupPath: normalizedGroupPath.isEmpty ? nil : normalizedGroupPath
+            groupPaths: normalizedGroupPaths
         )
     }
 
     func save() {
         let normalizedClientID = oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedGroupPath = normalizedGroupPath
+        let normalizedGroupPaths = normalizedGroupPaths
 
         defaults.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
         defaults.set(normalizedClientID, forKey: Keys.oauthClientID)
-        defaults.set(normalizedGroupPath, forKey: Keys.gitLabGroupPath)
+        defaults.set(normalizedGroupPaths, forKey: Keys.gitLabGroupPaths)
+        defaults.set(normalizedGroupPaths.first ?? "", forKey: Keys.gitLabGroupPath)
         defaults.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
         defaults.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
         defaults.set(recentIssueIDs, forKey: Keys.recentIssueIDs)
 
         cloudStore.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
         cloudStore.set(normalizedClientID, forKey: Keys.oauthClientID)
-        cloudStore.set(normalizedGroupPath, forKey: Keys.gitLabGroupPath)
+        cloudStore.set(normalizedGroupPaths, forKey: Keys.gitLabGroupPaths)
+        cloudStore.set(normalizedGroupPaths.first ?? "", forKey: Keys.gitLabGroupPath)
         cloudStore.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
         cloudStore.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
         cloudStore.set(recentIssueIDs, forKey: Keys.recentIssueIDs)
         cloudStore.synchronize()
+    }
+
+    func addSelectedGroup(path: String) {
+        let normalizedPath = Self.normalizeGroupPath(path)
+        guard !normalizedPath.isEmpty, !gitLabGroupPaths.contains(normalizedPath) else {
+            return
+        }
+
+        gitLabGroupPaths = (gitLabGroupPaths + [normalizedPath]).sorted()
+        save()
+    }
+
+    func removeSelectedGroup(path: String) {
+        let normalizedPath = Self.normalizeGroupPath(path)
+        gitLabGroupPaths.removeAll { $0 == normalizedPath }
+        save()
+    }
+
+    func clearSelectedGroups() {
+        gitLabGroupPaths = []
+        save()
     }
 
     func rememberSelectedProject(id: Int) {
@@ -153,6 +187,7 @@ final class AppSettings: ObservableObject {
         if changedKeys.contains(Keys.gitLabBaseURL)
             || changedKeys.contains(Keys.oauthClientID)
             || changedKeys.contains(Keys.gitLabGroupPath)
+            || changedKeys.contains(Keys.gitLabGroupPaths)
             || changedKeys.contains(Keys.lastSelectedProjectID)
             || changedKeys.contains(Keys.recentProjectIDs)
             || changedKeys.contains(Keys.recentIssueIDs) {
@@ -164,6 +199,7 @@ final class AppSettings: ObservableObject {
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
         let remoteGroupPath = cloudStore.string(forKey: Keys.gitLabGroupPath) ?? ""
+        let remoteGroupPaths = cloudStore.array(forKey: Keys.gitLabGroupPaths) as? [String] ?? []
         let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
@@ -176,8 +212,13 @@ final class AppSettings: ObservableObject {
             oauthClientID = remoteClientID
         }
 
-        if gitLabGroupPath != remoteGroupPath {
-            gitLabGroupPath = remoteGroupPath
+        let resolvedRemoteGroupPaths = Self.resolveGroupPaths(
+            primary: remoteGroupPaths,
+            fallbackArray: [],
+            fallbackSingle: remoteGroupPath
+        )
+        if gitLabGroupPaths != resolvedRemoteGroupPaths {
+            gitLabGroupPaths = resolvedRemoteGroupPaths
         }
 
         if lastSelectedProjectID != remoteLastProjectID {
@@ -194,9 +235,30 @@ final class AppSettings: ObservableObject {
 
         defaults.set(remoteBaseURL, forKey: Keys.gitLabBaseURL)
         defaults.set(remoteClientID, forKey: Keys.oauthClientID)
+        defaults.set(resolvedRemoteGroupPaths, forKey: Keys.gitLabGroupPaths)
         defaults.set(remoteGroupPath, forKey: Keys.gitLabGroupPath)
         defaults.set(remoteLastProjectID, forKey: Keys.lastSelectedProjectID)
         defaults.set(remoteRecentProjectIDs, forKey: Keys.recentProjectIDs)
         defaults.set(remoteRecentIssueIDs, forKey: Keys.recentIssueIDs)
+    }
+
+    nonisolated private static func resolveGroupPaths(primary: [String], fallbackArray: [String], fallbackSingle: String) -> [String] {
+        let combined = !primary.isEmpty ? primary : (!fallbackArray.isEmpty ? fallbackArray : [fallbackSingle])
+        return combined
+            .map(normalizeGroupPath)
+            .filter { !$0.isEmpty }
+            .uniquedAndSorted()
+    }
+
+    nonisolated private static func normalizeGroupPath(_ path: String) -> String {
+        path
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+}
+
+private extension Array where Element == String {
+    func uniquedAndSorted() -> [String] {
+        Array(Set(self)).sorted()
     }
 }

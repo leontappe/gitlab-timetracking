@@ -13,6 +13,7 @@ struct SettingsView: View {
 
     @State private var saveMessage: String?
     @State private var isSaving = false
+    @State private var pendingGroupPath = ""
 
     private var availableGroupPaths: [String] {
         let projectGroups: [String] = projectManager.projects.compactMap { project in
@@ -21,8 +22,12 @@ struct SettingsView: View {
             return components.joined(separator: "/")
         }
 
-        let mergedGroups = Set(projectGroups).union(settings.gitLabGroupPath.isEmpty ? [] : [settings.gitLabGroupPath])
+        let mergedGroups = Set(projectGroups).union(settings.gitLabGroupPaths)
         return mergedGroups.sorted()
+    }
+
+    private var selectableGroupPaths: [String] {
+        availableGroupPaths.filter { !settings.gitLabGroupPaths.contains($0) }
     }
 
     var body: some View {
@@ -34,13 +39,50 @@ struct SettingsView: View {
                 TextField("OAuth application ID", text: $settings.oauthClientID)
                     .textFieldStyle(.roundedBorder)
 
-                Picker("Group", selection: $settings.gitLabGroupPath) {
-                    Text("All visible projects")
-                        .tag("")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Picker("Add Group", selection: $pendingGroupPath) {
+                            Text("Select a group")
+                                .tag("")
 
-                    ForEach(availableGroupPaths, id: \.self) { groupPath in
-                        Text(groupPath)
-                            .tag(groupPath)
+                            ForEach(selectableGroupPaths, id: \.self) { groupPath in
+                                Text(groupPath)
+                                    .tag(groupPath)
+                            }
+                        }
+
+                        Button("Add") {
+                            guard !pendingGroupPath.isEmpty else { return }
+                            settings.addSelectedGroup(path: pendingGroupPath)
+                            pendingGroupPath = ""
+                        }
+                        .disabled(pendingGroupPath.isEmpty)
+                    }
+
+                    if settings.gitLabGroupPaths.isEmpty {
+                        Text("All visible projects are currently included.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(settings.gitLabGroupPaths, id: \.self) { groupPath in
+                                HStack {
+                                    Text(groupPath)
+                                        .textSelection(.enabled)
+                                    Spacer()
+                                    Button("Remove") {
+                                        settings.removeSelectedGroup(path: groupPath)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                        }
+
+                        Button("Use All Visible Projects") {
+                            settings.clearSelectedGroups()
+                            pendingGroupPath = ""
+                        }
+                        .buttonStyle(.borderless)
                     }
                 }
 
@@ -48,7 +90,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("If set, the create-issue project picker is scoped to this GitLab group path.")
+                Text("Selected groups limit the create-issue project picker to projects inside those namespaces.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

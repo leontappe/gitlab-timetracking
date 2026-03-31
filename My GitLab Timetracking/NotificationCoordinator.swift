@@ -17,6 +17,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
 
     var onContinue: (() -> Void)?
     var onStop: (() -> Void)?
+    private var reminderTask: Task<Void, Never>?
 
     func configure() {
         let center = UNUserNotificationCenter.current()
@@ -59,7 +60,29 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         UNUserNotificationCenter.current().add(request)
     }
 
+    func beginCheckpointReminderLoop(for issue: GitLabIssue, interval: TimeInterval = 180) {
+        reminderTask?.cancel()
+        reminderTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                } catch {
+                    return
+                }
+
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.sendCheckpointNotification(for: issue)
+                }
+            }
+        }
+    }
+
     func clearCheckpointNotification() {
+        reminderTask?.cancel()
+        reminderTask = nil
         let center = UNUserNotificationCenter.current()
         center.removeDeliveredNotifications(withIdentifiers: [Self.notificationID])
         center.removePendingNotificationRequests(withIdentifiers: [Self.notificationID])
@@ -69,7 +92,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        [.banner, .list, .sound]
     }
 
     nonisolated func userNotificationCenter(

@@ -210,6 +210,7 @@ final class TrackingManager: ObservableObject {
 
         guard activeSession != nil else { return }
         NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
+        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
         infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
     }
 
@@ -244,6 +245,8 @@ final class TrackingManager: ObservableObject {
 
         if session.awaitingContinuation {
             infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
             return
         }
 
@@ -263,6 +266,7 @@ final class TrackingManager: ObservableObject {
 
             guard activeSession != nil else { return }
             NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
             infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
             return
         }

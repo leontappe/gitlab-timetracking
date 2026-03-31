@@ -10,13 +10,44 @@ struct MenuBarLabelView: View {
     @ObservedObject var tracker: TrackingManager
 
     var body: some View {
-        if let issue = tracker.activeIssue, tracker.isTracking {
-            Label(issue.references.short, systemImage: "timer")
-        } else if tracker.activeIssue != nil {
-            Label("Paused", systemImage: "pause.circle")
-        } else {
-            Label("GitLab", systemImage: "list.bullet.clipboard")
+        HStack(spacing: 6) {
+            Image(systemName: statusSymbolName)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(statusColor, .primary.opacity(0.2))
+            Text(statusLabel)
         }
+    }
+
+    private var statusSymbolName: String {
+        if tracker.isTracking {
+            return "play.circle.fill"
+        }
+
+        if tracker.activeIssue != nil {
+            return "bell.badge.fill"
+        }
+
+        return "circle.fill"
+    }
+
+    private var statusLabel: String {
+        if let issue = tracker.activeIssue {
+            return issue.references.short
+        }
+
+        return "GitLab"
+    }
+
+    private var statusColor: Color {
+        if tracker.isTracking {
+            return Color(red: 0.18, green: 0.62, blue: 0.33)
+        }
+
+        if tracker.activeIssue != nil {
+            return Color.orange
+        }
+
+        return Color.secondary
     }
 }
 
@@ -98,8 +129,9 @@ struct MenuBarContentView: View {
     @ViewBuilder
     private func activeSection(session: TrackingManager.Session) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking")
+            Label(session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking", systemImage: session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill")
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(session.awaitingContinuation ? Color.orange : Color(red: 0.18, green: 0.62, blue: 0.33))
 
             Button {
                 NSWorkspace.shared.open(session.issue.webURL)
@@ -114,8 +146,12 @@ struct MenuBarContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(activeSessionBackgroundColor(session: session))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(activeSessionBorderColor(session: session), lineWidth: 1)
+                }
             }
             .buttonStyle(.plain)
 
@@ -191,8 +227,8 @@ struct MenuBarContentView: View {
                 Spacer()
             }
 
-            if !settings.normalizedGroupPath.isEmpty {
-                Text("Projects are scoped to `\(settings.normalizedGroupPath)`.")
+            if !settings.normalizedGroupPaths.isEmpty {
+                Text("Projects are scoped to \(settings.normalizedGroupPaths.count) selected \(settings.normalizedGroupPaths.count == 1 ? "group" : "groups").")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -501,8 +537,8 @@ struct MenuBarContentView: View {
     }
 
     private var scopedProjects: [GitLabProject] {
-        let groupPath = settings.normalizedGroupPath
-        guard !groupPath.isEmpty else {
+        let groupPaths = settings.normalizedGroupPaths
+        guard !groupPaths.isEmpty else {
             return projectManager.orderedProjects
         }
 
@@ -510,21 +546,39 @@ struct MenuBarContentView: View {
     }
 
     private var noProjectsMessage: String {
-        guard !settings.normalizedGroupPath.isEmpty else {
+        guard !settings.normalizedGroupPaths.isEmpty else {
             return "No cached projects yet. Refresh the project list."
         }
 
-        return "No cached projects found in `\(settings.normalizedGroupPath)`. Refresh the project list or update the group path in Settings."
+        return "No cached projects found in the selected groups. Refresh the project list or update the group selection in Settings."
     }
 
     private func matchesConfiguredGroup(project: GitLabProject) -> Bool {
-        let configuredGroupPath = settings.normalizedGroupPath.lowercased()
-        guard !configuredGroupPath.isEmpty else {
+        let configuredGroupPaths = settings.normalizedGroupPaths.map { $0.lowercased() }
+        guard !configuredGroupPaths.isEmpty else {
             return true
         }
 
         let projectPath = project.pathWithNamespace.lowercased()
-        return projectPath == configuredGroupPath || projectPath.hasPrefix(configuredGroupPath + "/")
+        return configuredGroupPaths.contains { groupPath in
+            projectPath == groupPath || projectPath.hasPrefix(groupPath + "/")
+        }
+    }
+
+    private func activeSessionBackgroundColor(session: TrackingManager.Session) -> Color {
+        if session.awaitingContinuation {
+            return Color.orange.opacity(0.12)
+        }
+
+        return Color(red: 0.18, green: 0.62, blue: 0.33).opacity(0.12)
+    }
+
+    private func activeSessionBorderColor(session: TrackingManager.Session) -> Color {
+        if session.awaitingContinuation {
+            return Color.orange.opacity(0.35)
+        }
+
+        return Color(red: 0.18, green: 0.62, blue: 0.33).opacity(0.35)
     }
 
     private var issuesSection: some View {
