@@ -11,33 +11,11 @@ struct MenuBarLabelView: View {
     @ObservedObject var tracker: TrackingManager
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let _ = context.date
-
-            HStack(spacing: 6) {
-                Image(systemName: statusSymbolName)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(statusColor, .primary.opacity(0.2))
-                Text(statusLabel)
-            }
-            .contextMenu {
-                if tracker.activeSession != nil {
-                    Button("Stop Tracking") {
-                        tracker.stopTracking()
-                    }
-                }
-
-                Button("Settings") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-
-                Divider()
-
-                Button("Quit") {
-                    NSApp.terminate(nil)
-                }
-            }
+        HStack(spacing: 6) {
+            Image(systemName: statusSymbolName)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(statusColor, .primary.opacity(0.2))
+            Text(statusLabel)
         }
     }
 
@@ -56,7 +34,7 @@ struct MenuBarLabelView: View {
     private var statusLabel: String {
         if let issue = tracker.activeIssue {
             if settings.showTrackedTimeInMenuBar {
-                let total = tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue))
+                let total = tracker.formattedDuration(seconds: issue.timeStats.totalTimeSpent)
                 return "\(issue.references.short) \(total)"
             }
 
