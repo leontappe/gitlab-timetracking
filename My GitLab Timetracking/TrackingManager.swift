@@ -70,7 +70,14 @@ final class TrackingManager: ObservableObject {
     }
 
     func formattedDuration(seconds: Int) -> String {
-        let totalMinutes = max(0, seconds / 60)
+        let clampedSeconds = max(0, seconds)
+        if clampedSeconds < 600 {
+            let minutes = clampedSeconds / 60
+            let remainingSeconds = clampedSeconds % 60
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+
+        let totalMinutes = clampedSeconds / 60
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60
 

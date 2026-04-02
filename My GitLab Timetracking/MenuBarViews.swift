@@ -41,7 +41,7 @@ struct MenuBarLabelView: View {
             return issue.references.short
         }
 
-        return "GitLab"
+        return ""
     }
 
     private var statusColor: Color {
@@ -146,6 +146,7 @@ struct MenuBarContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(Color(NSColor.controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
