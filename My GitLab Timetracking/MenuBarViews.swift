@@ -79,13 +79,19 @@ struct MenuBarLabelView: View {
     }
 
     private var statusLabel: String {
-        if let issue = tracker.activeIssue {
-            if settings.showTrackedTimeInMenuBar {
-                let total = tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue))
-                return "\(issue.references.short) \(total)"
+        if let session = tracker.activeSession {
+            var components: [String] = []
+
+            if settings.showIssueReferenceInMenuBar {
+                components.append(session.issue.references.short)
             }
 
-            return issue.references.short
+            if settings.showTrackedTimeInMenuBar {
+                let current = tracker.formattedDuration(seconds: Int(tracker.currentCycleElapsed(for: session)))
+                components.append(current)
+            }
+
+            return components.joined(separator: " ")
         }
 
         return ""
