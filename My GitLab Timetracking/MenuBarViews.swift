@@ -14,8 +14,8 @@ struct MenuBarLabelView: View {
         HStack(spacing: 6) {
             Image(systemName: statusSymbolName)
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(statusColor, statusColor.opacity(0.35))
-                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(statusColor, statusColor.opacity(0.55))
+                .font(.system(size: 16, weight: .bold))
             Text(statusLabel)
         }
     }
