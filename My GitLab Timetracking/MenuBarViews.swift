@@ -675,10 +675,6 @@ struct MenuBarContentView: View {
     }
 
     private func currentCycleLabel(session: TrackingManager.Session) -> String {
-        if session.awaitingContinuation {
-            return "Awaiting response"
-        }
-
         return "Current: \(tracker.formattedDuration(seconds: Int(tracker.currentCycleElapsed(for: session))))"
     }
 

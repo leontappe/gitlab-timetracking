@@ -56,7 +56,10 @@ final class TrackingManager: ObservableObject {
     }
 
     func currentCycleElapsed(for session: Session) -> TimeInterval {
-        guard !session.awaitingContinuation else { return 0 }
+        if session.awaitingContinuation {
+            return max(0, session.lastCheckpointAt.timeIntervalSince(session.startedAt))
+        }
+
         return max(0, Date().timeIntervalSince(session.startedAt))
     }
 
