@@ -147,7 +147,7 @@ actor GitLabAPI {
 
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder().decode(GitLabUser.self, from: data)
+        return try decoder.decode(GitLabUser.self, from: data)
     }
 
     func fetchProjects(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabProject] {
@@ -170,7 +170,7 @@ actor GitLabAPI {
 
             let (data, response) = try await session.data(for: request)
             let httpResponse = try validate(response: response, data: data)
-            collectedProjects += try JSONDecoder().decode([GitLabProject].self, from: data)
+            collectedProjects += try decoder.decode([GitLabProject].self, from: data)
             nextPage = httpResponse.value(forHTTPHeaderField: "X-Next-Page") ?? ""
         }
 
@@ -197,7 +197,7 @@ actor GitLabAPI {
 
         let (data, response) = try await session.data(for: request)
         _ = try validate(response: response, data: data)
-        return try JSONDecoder().decode(GitLabCreatedIssue.self, from: data)
+        return try decoder.decode(GitLabCreatedIssue.self, from: data)
     }
 
     private static func makeDecoder() -> JSONDecoder {

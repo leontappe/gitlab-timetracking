@@ -195,7 +195,7 @@ final class TrackingManager: ObservableObject {
         NotificationCoordinator.shared.clearCheckpointNotification()
 
         if let session = activeSession {
-            infoMessage = "Tracked 20 minutes on \(session.issue.references.short)."
+            infoMessage = "Tracked \(checkpointMinutes) minutes on \(session.issue.references.short)."
         }
         activeSession = nil
         sessionStore.clear()
@@ -242,11 +242,11 @@ final class TrackingManager: ObservableObject {
         activeSession = session
         persistActiveSession()
 
-        await book(issue: session.issue, minutes: checkpointMinutes, followUp: "20 minutes added to \(session.issue.references.short).")
+        await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
 
         guard activeSession != nil else { return }
-        NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
-        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
+        NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
+        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
         infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
     }
 
@@ -281,8 +281,8 @@ final class TrackingManager: ObservableObject {
 
         if session.awaitingContinuation {
             infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
-            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
-            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
             return
         }
 
@@ -298,11 +298,11 @@ final class TrackingManager: ObservableObject {
             session.awaitingContinuation = true
             activeSession = session
             persistActiveSession()
-            await book(issue: session.issue, minutes: checkpointMinutes, followUp: "20 minutes added to \(session.issue.references.short).")
+            await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
 
             guard activeSession != nil else { return }
-            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue)
-            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue)
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
             infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
             return
         }

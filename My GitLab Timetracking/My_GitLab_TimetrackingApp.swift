@@ -47,4 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NotificationCoordinator.shared.configure()
     }
+
+    func showSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        for window in NSApp.windows {
+            guard window.canBecomeKey else { continue }
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
 }

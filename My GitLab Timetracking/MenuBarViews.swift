@@ -7,6 +7,11 @@ import SwiftUI
 import AppKit
 import Combine
 
+enum AppColors {
+    static let trackingGreen = Color(red: 0.18, green: 0.62, blue: 0.33)
+    static let checkpointOrange = Color.orange
+}
+
 @MainActor
 final class MenuBarLabelClock: ObservableObject {
     @Published private(set) var tick = 0
@@ -99,14 +104,14 @@ struct MenuBarLabelView: View {
 
     private var statusColor: Color {
         if tracker.isTracking {
-            return Color(red: 0.18, green: 0.62, blue: 0.33)
+            return AppColors.trackingGreen
         }
 
         if tracker.activeIssue != nil {
-            return Color.orange
+            return AppColors.checkpointOrange
         }
 
-        return Color.secondary
+        return .secondary
     }
 
     private func updateClockState() {
@@ -179,9 +184,12 @@ struct MenuBarContentView: View {
             .buttonStyle(.borderless)
             .help("Refresh issues")
 
-            SettingsLink {
+            Button {
+                (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
+            } label: {
                 Image(systemName: "gearshape")
             }
+            .buttonStyle(.borderless)
             .help("Settings")
         }
     }
@@ -216,7 +224,7 @@ struct MenuBarContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label(session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking", systemImage: session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(session.awaitingContinuation ? Color.orange : Color(red: 0.18, green: 0.62, blue: 0.33))
+                .foregroundStyle(session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen)
 
             Button {
                 NSWorkspace.shared.open(session.issue.webURL)
@@ -659,19 +667,11 @@ struct MenuBarContentView: View {
     }
 
     private func activeSessionBackgroundColor(session: TrackingManager.Session) -> Color {
-        if session.awaitingContinuation {
-            return Color.orange.opacity(0.12)
-        }
-
-        return Color(red: 0.18, green: 0.62, blue: 0.33).opacity(0.12)
+        (session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen).opacity(0.12)
     }
 
     private func activeSessionBorderColor(session: TrackingManager.Session) -> Color {
-        if session.awaitingContinuation {
-            return Color.orange.opacity(0.35)
-        }
-
-        return Color(red: 0.18, green: 0.62, blue: 0.33).opacity(0.35)
+        (session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen).opacity(0.35)
     }
 
     private func currentCycleLabel(session: TrackingManager.Session) -> String {

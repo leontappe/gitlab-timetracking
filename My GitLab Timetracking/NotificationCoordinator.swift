@@ -6,6 +6,7 @@
 import Foundation
 import UserNotifications
 import AppKit
+import os.log
 
 @MainActor
 final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate {
@@ -15,6 +16,8 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     static let stopActionID = "STOP_TRACKING"
     static let categoryID = "TRACKING_CHECKPOINT"
     static let notificationID = "TRACKING_CHECKPOINT_ACTIVE"
+
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "GitLabTimetracking", category: "Notifications")
 
     var onContinue: (() -> Void)?
     var onStop: (() -> Void)?
@@ -42,14 +45,20 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         )
 
         center.setNotificationCategories([category])
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error {
+                Self.log.error("Notification authorization error: \(error.localizedDescription)")
+            } else if !granted {
+                Self.log.warning("Notification authorization denied by user")
+            }
+        }
     }
 
-    func sendCheckpointNotification(for issue: GitLabIssue) {
+    func sendCheckpointNotification(for issue: GitLabIssue, checkpointMinutes: Int) {
         let content = UNMutableNotificationContent()
         content.title = issue.references.short
         content.subtitle = issue.title
-        content.body = "20 minutes were added. Continue tracking this issue?"
+        content.body = "\(checkpointMinutes) minutes were added. Continue tracking this issue?"
         content.sound = .default
         content.categoryIdentifier = Self.categoryID
 
@@ -63,7 +72,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         playReminderSound()
     }
 
-    func beginCheckpointReminderLoop(for issue: GitLabIssue, interval: TimeInterval = 180) {
+    func beginCheckpointReminderLoop(for issue: GitLabIssue, checkpointMinutes: Int, interval: TimeInterval = 180) {
         reminderTask?.cancel()
         reminderTask = Task { [weak self] in
             guard let self else { return }
@@ -77,7 +86,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
 
                 if Task.isCancelled { return }
                 await MainActor.run {
-                    self.sendCheckpointNotification(for: issue)
+                    self.sendCheckpointNotification(for: issue, checkpointMinutes: checkpointMinutes)
                 }
             }
         }

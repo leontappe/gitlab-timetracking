@@ -130,28 +130,9 @@ final class AppSettings: ObservableObject {
     }
 
     func save() {
-        let normalizedClientID = oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedGroupPaths = normalizedGroupPaths
-
-        defaults.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
-        defaults.set(normalizedClientID, forKey: Keys.oauthClientID)
-        defaults.set(showTrackedTimeInMenuBar, forKey: Keys.showTrackedTimeInMenuBar)
-        defaults.set(showIssueReferenceInMenuBar, forKey: Keys.showIssueReferenceInMenuBar)
-        defaults.set(normalizedGroupPaths, forKey: Keys.gitLabGroupPaths)
-        defaults.set(normalizedGroupPaths.first ?? "", forKey: Keys.gitLabGroupPath)
-        defaults.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
-        defaults.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
-        defaults.set(recentIssueIDs, forKey: Keys.recentIssueIDs)
-
-        cloudStore.set(normalizedBaseURLString, forKey: Keys.gitLabBaseURL)
-        cloudStore.set(normalizedClientID, forKey: Keys.oauthClientID)
-        cloudStore.set(showTrackedTimeInMenuBar, forKey: Keys.showTrackedTimeInMenuBar)
-        cloudStore.set(showIssueReferenceInMenuBar, forKey: Keys.showIssueReferenceInMenuBar)
-        cloudStore.set(normalizedGroupPaths, forKey: Keys.gitLabGroupPaths)
-        cloudStore.set(normalizedGroupPaths.first ?? "", forKey: Keys.gitLabGroupPath)
-        cloudStore.set(lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
-        cloudStore.set(recentProjectIDs, forKey: Keys.recentProjectIDs)
-        cloudStore.set(recentIssueIDs, forKey: Keys.recentIssueIDs)
+        let values = currentSettingsValues()
+        writeToDefaults(values)
+        writeToCloudStore(values)
         cloudStore.synchronize()
     }
 
@@ -222,52 +203,83 @@ final class AppSettings: ObservableObject {
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
 
-        if gitLabBaseURL != remoteBaseURL {
-            gitLabBaseURL = remoteBaseURL
-        }
-
-        if oauthClientID != remoteClientID {
-            oauthClientID = remoteClientID
-        }
-
-        if showTrackedTimeInMenuBar != remoteShowTrackedTimeInMenuBar {
-            showTrackedTimeInMenuBar = remoteShowTrackedTimeInMenuBar
-        }
-
-        if showIssueReferenceInMenuBar != remoteShowIssueReferenceInMenuBar {
-            showIssueReferenceInMenuBar = remoteShowIssueReferenceInMenuBar
-        }
-
         let resolvedRemoteGroupPaths = Self.resolveGroupPaths(
             primary: remoteGroupPaths,
             fallbackArray: [],
             fallbackSingle: remoteGroupPath
         )
-        if gitLabGroupPaths != resolvedRemoteGroupPaths {
-            gitLabGroupPaths = resolvedRemoteGroupPaths
-        }
 
-        if lastSelectedProjectID != remoteLastProjectID {
-            lastSelectedProjectID = remoteLastProjectID
-        }
+        if gitLabBaseURL != remoteBaseURL { gitLabBaseURL = remoteBaseURL }
+        if oauthClientID != remoteClientID { oauthClientID = remoteClientID }
+        if showTrackedTimeInMenuBar != remoteShowTrackedTimeInMenuBar { showTrackedTimeInMenuBar = remoteShowTrackedTimeInMenuBar }
+        if showIssueReferenceInMenuBar != remoteShowIssueReferenceInMenuBar { showIssueReferenceInMenuBar = remoteShowIssueReferenceInMenuBar }
+        if gitLabGroupPaths != resolvedRemoteGroupPaths { gitLabGroupPaths = resolvedRemoteGroupPaths }
+        if lastSelectedProjectID != remoteLastProjectID { lastSelectedProjectID = remoteLastProjectID }
+        if recentProjectIDs != remoteRecentProjectIDs { recentProjectIDs = remoteRecentProjectIDs }
+        if recentIssueIDs != remoteRecentIssueIDs { recentIssueIDs = remoteRecentIssueIDs }
 
-        if recentProjectIDs != remoteRecentProjectIDs {
-            recentProjectIDs = remoteRecentProjectIDs
-        }
+        let values = SettingsValues(
+            baseURL: remoteBaseURL,
+            clientID: remoteClientID,
+            showTrackedTimeInMenuBar: remoteShowTrackedTimeInMenuBar,
+            showIssueReferenceInMenuBar: remoteShowIssueReferenceInMenuBar,
+            groupPaths: resolvedRemoteGroupPaths,
+            legacyGroupPath: remoteGroupPath,
+            lastSelectedProjectID: remoteLastProjectID,
+            recentProjectIDs: remoteRecentProjectIDs,
+            recentIssueIDs: remoteRecentIssueIDs
+        )
+        writeToDefaults(values)
+    }
 
-        if recentIssueIDs != remoteRecentIssueIDs {
-            recentIssueIDs = remoteRecentIssueIDs
-        }
+    private struct SettingsValues {
+        let baseURL: String
+        let clientID: String
+        let showTrackedTimeInMenuBar: Bool
+        let showIssueReferenceInMenuBar: Bool
+        let groupPaths: [String]
+        let legacyGroupPath: String
+        let lastSelectedProjectID: Int?
+        let recentProjectIDs: [Int]
+        let recentIssueIDs: [Int]
+    }
 
-        defaults.set(remoteBaseURL, forKey: Keys.gitLabBaseURL)
-        defaults.set(remoteClientID, forKey: Keys.oauthClientID)
-        defaults.set(remoteShowTrackedTimeInMenuBar, forKey: Keys.showTrackedTimeInMenuBar)
-        defaults.set(remoteShowIssueReferenceInMenuBar, forKey: Keys.showIssueReferenceInMenuBar)
-        defaults.set(resolvedRemoteGroupPaths, forKey: Keys.gitLabGroupPaths)
-        defaults.set(remoteGroupPath, forKey: Keys.gitLabGroupPath)
-        defaults.set(remoteLastProjectID, forKey: Keys.lastSelectedProjectID)
-        defaults.set(remoteRecentProjectIDs, forKey: Keys.recentProjectIDs)
-        defaults.set(remoteRecentIssueIDs, forKey: Keys.recentIssueIDs)
+    private func currentSettingsValues() -> SettingsValues {
+        SettingsValues(
+            baseURL: normalizedBaseURLString,
+            clientID: oauthClientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            showTrackedTimeInMenuBar: showTrackedTimeInMenuBar,
+            showIssueReferenceInMenuBar: showIssueReferenceInMenuBar,
+            groupPaths: normalizedGroupPaths,
+            legacyGroupPath: normalizedGroupPaths.first ?? "",
+            lastSelectedProjectID: lastSelectedProjectID,
+            recentProjectIDs: recentProjectIDs,
+            recentIssueIDs: recentIssueIDs
+        )
+    }
+
+    private func writeToDefaults(_ v: SettingsValues) {
+        defaults.set(v.baseURL, forKey: Keys.gitLabBaseURL)
+        defaults.set(v.clientID, forKey: Keys.oauthClientID)
+        defaults.set(v.showTrackedTimeInMenuBar, forKey: Keys.showTrackedTimeInMenuBar)
+        defaults.set(v.showIssueReferenceInMenuBar, forKey: Keys.showIssueReferenceInMenuBar)
+        defaults.set(v.groupPaths, forKey: Keys.gitLabGroupPaths)
+        defaults.set(v.legacyGroupPath, forKey: Keys.gitLabGroupPath)
+        defaults.set(v.lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
+        defaults.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
+        defaults.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
+    }
+
+    private func writeToCloudStore(_ v: SettingsValues) {
+        cloudStore.set(v.baseURL, forKey: Keys.gitLabBaseURL)
+        cloudStore.set(v.clientID, forKey: Keys.oauthClientID)
+        cloudStore.set(v.showTrackedTimeInMenuBar, forKey: Keys.showTrackedTimeInMenuBar)
+        cloudStore.set(v.showIssueReferenceInMenuBar, forKey: Keys.showIssueReferenceInMenuBar)
+        cloudStore.set(v.groupPaths, forKey: Keys.gitLabGroupPaths)
+        cloudStore.set(v.legacyGroupPath, forKey: Keys.gitLabGroupPath)
+        cloudStore.set(v.lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
+        cloudStore.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
+        cloudStore.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
     }
 
     nonisolated private static func resolveGroupPaths(primary: [String], fallbackArray: [String], fallbackSingle: String) -> [String] {
