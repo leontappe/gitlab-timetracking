@@ -13,8 +13,9 @@ struct MenuBarLabelView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: statusSymbolName)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(statusColor, .primary.opacity(0.2))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(statusColor)
+                .font(.system(size: 14, weight: .semibold))
             Text(statusLabel)
         }
     }
