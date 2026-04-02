@@ -11,11 +11,11 @@ struct MenuBarLabelView: View {
     @ObservedObject var tracker: TrackingManager
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack() {
             Image(systemName: statusSymbolName)
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(statusColor, statusColor.opacity(0.55))
-                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(statusColor, statusColor.opacity(1.0))
+                .font(.system(size: 20, weight: .bold))
             Text(statusLabel)
         }
     }
@@ -132,7 +132,7 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private var trackingOverviewSection: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
+        TimelineView(.periodic(from: .now, by: 1)) { context in
             let _ = context.date
 
             if let session = tracker.activeSession {
