@@ -13,23 +13,22 @@ struct MenuBarLabelView: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: statusSymbolName)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(statusColor)
-                .font(.system(size: 14, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(statusColor, statusColor.opacity(0.35))
             Text(statusLabel)
         }
     }
 
     private var statusSymbolName: String {
         if tracker.isTracking {
-            return "play.circle.fill"
+            return "play.square.fill"
         }
 
         if tracker.activeIssue != nil {
-            return "bell.badge.fill"
+            return "bell.square.fill"
         }
 
-        return "circle.fill"
+        return "square.fill"
     }
 
     private var statusLabel: String {
