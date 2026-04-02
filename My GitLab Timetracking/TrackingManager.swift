@@ -149,7 +149,7 @@ final class TrackingManager: ObservableObject {
             awaitingContinuation: false
         )
         errorMessage = nil
-        infoMessage = "Tracking \(issue.references.short)."
+        infoMessage = ""
         settings.rememberUsedIssue(id: issue.id)
         scheduleCheckpoint()
         persistActiveSession()
@@ -214,6 +214,38 @@ final class TrackingManager: ObservableObject {
         activeSession = nil
         sessionStore.clear()
         infoMessage = "Connect your GitLab account in Settings."
+    }
+
+    func closeIssue(_ issue: GitLabIssue) async {
+        if activeIssue?.id == issue.id {
+            stopTracking()
+        }
+
+        do {
+            let configuration = try await authManager.currentAuthorization()
+            try await api.closeIssue(issue: issue, configuration: configuration)
+            errorMessage = nil
+            infoMessage = "Closed \(issue.references.short)."
+            await refreshIssues()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteIssue(_ issue: GitLabIssue) async {
+        if activeIssue?.id == issue.id {
+            stopTracking()
+        }
+
+        do {
+            let configuration = try await authManager.currentAuthorization()
+            try await api.deleteIssue(issue: issue, configuration: configuration)
+            errorMessage = nil
+            infoMessage = "Deleted \(issue.references.short)."
+            await refreshIssues()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func scheduleCheckpoint(after interval: TimeInterval? = nil) {

@@ -235,6 +235,31 @@ actor GitLabAPI {
         try validate(response: response, data: data)
     }
 
+    func closeIssue(issue: GitLabIssue, configuration: AuthorizedGitLabConfiguration) async throws {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)",
+            method: "PUT",
+            bodyItems: [
+                URLQueryItem(name: "state_event", value: "close")
+            ]
+        )
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    func deleteIssue(issue: GitLabIssue, configuration: AuthorizedGitLabConfiguration) async throws {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)",
+            method: "DELETE"
+        )
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
     private func makeRequest(
         configuration: AuthorizedGitLabConfiguration,
         path: String,

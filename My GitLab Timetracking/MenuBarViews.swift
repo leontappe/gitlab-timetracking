@@ -131,6 +131,7 @@ struct MenuBarContentView: View {
     @State private var isProjectListExpanded = false
     @State private var projectSearch = ""
     @State private var highlightedProjectID: Int?
+    @State private var issuePendingDeleteConfirmation: GitLabIssue?
     @FocusState private var isProjectSearchFocused: Bool
 
     var body: some View {
@@ -142,7 +143,7 @@ struct MenuBarContentView: View {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
-            } else {
+            } else if !tracker.infoMessage.isEmpty {
                 Text(tracker.infoMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -157,6 +158,30 @@ struct MenuBarContentView: View {
                 await tracker.refreshIssues()
             }
             await projectManager.loadProjectsIfNeeded()
+        }
+        .alert(
+            "Delete Issue?",
+            isPresented: Binding(
+                get: { issuePendingDeleteConfirmation != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        issuePendingDeleteConfirmation = nil
+                    }
+                }
+            ),
+            presenting: issuePendingDeleteConfirmation
+        ) { issue in
+            Button("Delete", role: .destructive) {
+                Task {
+                    await tracker.deleteIssue(issue)
+                }
+                issuePendingDeleteConfirmation = nil
+            }
+            Button("Cancel", role: .cancel) {
+                issuePendingDeleteConfirmation = nil
+            }
+        } message: { issue in
+            Text("Delete \(issue.references.short) from GitLab? This cannot be undone.")
         }
     }
 
@@ -733,8 +758,16 @@ struct MenuBarContentView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
-                                Button("Open in Browser") {
+                                Button("Open in GitLab") {
                                     NSWorkspace.shared.open(issue.webURL)
+                                }
+                                Button("Close Issue") {
+                                    Task {
+                                        await tracker.closeIssue(issue)
+                                    }
+                                }
+                                Button("Delete Issue") {
+                                    issuePendingDeleteConfirmation = issue
                                 }
                             }
                         }
