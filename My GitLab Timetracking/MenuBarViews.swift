@@ -5,18 +5,64 @@
 
 import SwiftUI
 import AppKit
+import Combine
+
+@MainActor
+final class MenuBarLabelClock: ObservableObject {
+    @Published private(set) var tick = 0
+
+    private var timer: Timer?
+
+    func setRunning(_ isRunning: Bool) {
+        if isRunning {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    private func start() {
+        guard timer == nil else { return }
+
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.tick += 1
+        }
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    deinit {
+        timer?.invalidate()
+    }
+}
 
 struct MenuBarLabelView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var tracker: TrackingManager
+    @StateObject private var clock = MenuBarLabelClock()
 
     var body: some View {
+        let _ = clock.tick
+
         HStack() {
             Image(systemName: statusSymbolName)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(statusColor, statusColor.opacity(1.0))
                 .font(.system(size: 20, weight: .bold))
             Text(statusLabel)
+        }
+        .onAppear(perform: updateClockState)
+        .onChange(of: settings.showTrackedTimeInMenuBar) { _, _ in
+            updateClockState()
+        }
+        .onChange(of: tracker.isTracking) { _, _ in
+            updateClockState()
+        }
+        .onChange(of: tracker.activeIssue?.id) { _, _ in
+            updateClockState()
         }
     }
 
@@ -35,7 +81,7 @@ struct MenuBarLabelView: View {
     private var statusLabel: String {
         if let issue = tracker.activeIssue {
             if settings.showTrackedTimeInMenuBar {
-                let total = tracker.formattedDuration(seconds: issue.timeStats.totalTimeSpent)
+                let total = tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue))
                 return "\(issue.references.short) \(total)"
             }
 
@@ -55,6 +101,10 @@ struct MenuBarLabelView: View {
         }
 
         return Color.secondary
+    }
+
+    private func updateClockState() {
+        clock.setRunning(settings.showTrackedTimeInMenuBar && tracker.isTracking && tracker.activeIssue != nil)
     }
 }
 
