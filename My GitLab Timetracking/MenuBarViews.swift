@@ -135,53 +135,35 @@ struct MenuBarContentView: View {
     @FocusState private var isProjectSearchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            trackingOverviewSection
+        ZStack {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                trackingOverviewSection
 
-            if let errorMessage = tracker.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            } else if !tracker.infoMessage.isEmpty {
-                Text(tracker.infoMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let errorMessage = tracker.errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else if !tracker.infoMessage.isEmpty {
+                    Text(tracker.infoMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                createIssueSection
+                issuesSection
             }
+            .padding(16)
 
-            createIssueSection
-            issuesSection
+            if let issue = issuePendingDeleteConfirmation {
+                deleteConfirmationOverlay(issue: issue)
+            }
         }
-        .padding(16)
         .task {
             if tracker.issues.isEmpty {
                 await tracker.refreshIssues()
             }
             await projectManager.loadProjectsIfNeeded()
-        }
-        .alert(
-            "Delete Issue?",
-            isPresented: Binding(
-                get: { issuePendingDeleteConfirmation != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        issuePendingDeleteConfirmation = nil
-                    }
-                }
-            ),
-            presenting: issuePendingDeleteConfirmation
-        ) { issue in
-            Button("Delete", role: .destructive) {
-                Task {
-                    await tracker.deleteIssue(issue)
-                }
-                issuePendingDeleteConfirmation = nil
-            }
-            Button("Cancel", role: .cancel) {
-                issuePendingDeleteConfirmation = nil
-            }
-        } message: { issue in
-            Text("Delete \(issue.references.short) from GitLab? This cannot be undone.")
         }
     }
 
@@ -775,6 +757,46 @@ struct MenuBarContentView: View {
                 }
                 .scrollIndicators(.never)
             }
+        }
+    }
+
+    private func deleteConfirmationOverlay(issue: GitLabIssue) -> some View {
+        ZStack {
+            Color.black.opacity(0.2)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Delete Issue?")
+                    .font(.headline)
+
+                Text("Delete \(issue.references.short) from GitLab? This cannot be undone.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Spacer()
+
+                    Button("Cancel") {
+                        issuePendingDeleteConfirmation = nil
+                    }
+
+                    Button("Delete", role: .destructive) {
+                        Task {
+                            await tracker.deleteIssue(issue)
+                        }
+                        issuePendingDeleteConfirmation = nil
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 320, alignment: .leading)
+            .background(Color(NSColor.windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         }
     }
 }
