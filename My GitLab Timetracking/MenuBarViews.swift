@@ -15,20 +15,21 @@ struct MenuBarLabelView: View {
             Image(systemName: statusSymbolName)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(statusColor, statusColor.opacity(0.35))
+                .font(.system(size: 15, weight: .semibold))
             Text(statusLabel)
         }
     }
 
     private var statusSymbolName: String {
         if tracker.isTracking {
-            return "play.square.fill"
+            return "play.circle.fill"
         }
 
         if tracker.activeIssue != nil {
-            return "bell.square.fill"
+            return "bell.badge.fill"
         }
 
-        return "square.fill"
+        return "circle.fill"
     }
 
     private var statusLabel: String {
