@@ -5,6 +5,7 @@
 
 import Foundation
 import UserNotifications
+import AppKit
 
 @MainActor
 final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate {
@@ -18,6 +19,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     var onContinue: (() -> Void)?
     var onStop: (() -> Void)?
     private var reminderTask: Task<Void, Never>?
+    private var alertSound: NSSound?
 
     func configure() {
         let center = UNUserNotificationCenter.current()
@@ -58,6 +60,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         )
 
         UNUserNotificationCenter.current().add(request)
+        playReminderSound()
     }
 
     func beginCheckpointReminderLoop(for issue: GitLabIssue, interval: TimeInterval = 180) {
@@ -109,5 +112,19 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
                 break
             }
         }
+    }
+
+    private func playReminderSound() {
+        let preferredNames = ["Submarine", "Funk", "Glass", "Hero"]
+
+        for name in preferredNames {
+            if let sound = NSSound(named: NSSound.Name(name)) {
+                alertSound = sound
+                sound.play()
+                return
+            }
+        }
+
+        NSSound.beep()
     }
 }
