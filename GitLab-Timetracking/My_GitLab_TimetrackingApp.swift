@@ -11,18 +11,18 @@ import AppKit
 @main
 struct My_GitLab_TimetrackingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var settings: AppSettings
-    @StateObject private var authManager: GitLabAuthManager
-    @StateObject private var projectManager: ProjectManager
-    @StateObject private var tracker: TrackingManager
+    @State private var settings: AppSettings
+    @State private var authManager: GitLabAuthManager
+    @State private var projectManager: ProjectManager
+    @State private var tracker: TrackingManager
 
     init() {
         let settings = AppSettings()
         let authManager = GitLabAuthManager(settings: settings)
-        _settings = StateObject(wrappedValue: settings)
-        _authManager = StateObject(wrappedValue: authManager)
-        _projectManager = StateObject(wrappedValue: ProjectManager(authManager: authManager))
-        _tracker = StateObject(wrappedValue: TrackingManager(authManager: authManager))
+        _settings = State(initialValue: settings)
+        _authManager = State(initialValue: authManager)
+        _projectManager = State(initialValue: ProjectManager(authManager: authManager))
+        _tracker = State(initialValue: TrackingManager(authManager: authManager))
     }
 
     var body: some Scene {

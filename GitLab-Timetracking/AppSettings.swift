@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import Combine
 
 struct GitLabConfiguration {
     let baseURL: URL
@@ -12,7 +11,8 @@ struct GitLabConfiguration {
     let groupPaths: [String]
 }
 
-final class AppSettings: ObservableObject {
+@Observable
+final class AppSettings {
     private enum Keys {
         static let gitLabBaseURL = "gitlab.baseURL"
         static let oauthClientID = "gitlab.oauthClientID"
@@ -27,16 +27,16 @@ final class AppSettings: ObservableObject {
 
     private let defaults: UserDefaults
     private let cloudStore: NSUbiquitousKeyValueStore
-    private var cancellables = Set<AnyCancellable>()
+    private var cloudObserver: (any NSObjectProtocol)?
 
-    @Published var gitLabBaseURL: String
-    @Published var oauthClientID: String
-    @Published var showTrackedTimeInMenuBar: Bool
-    @Published var showIssueReferenceInMenuBar: Bool
-    @Published private(set) var gitLabGroupPaths: [String]
-    @Published private(set) var lastSelectedProjectID: Int?
-    @Published private(set) var recentProjectIDs: [Int]
-    @Published private(set) var recentIssueIDs: [Int]
+    var gitLabBaseURL: String
+    var oauthClientID: String
+    var showTrackedTimeInMenuBar: Bool
+    var showIssueReferenceInMenuBar: Bool
+    private(set) var gitLabGroupPaths: [String]
+    private(set) var lastSelectedProjectID: Int?
+    private(set) var recentProjectIDs: [Int]
+    private(set) var recentIssueIDs: [Int]
 
     init(
         defaults: UserDefaults = .standard,
@@ -81,13 +81,21 @@ final class AppSettings: ObservableObject {
             save()
         }
 
-        NotificationCenter.default.publisher(for: NSUbiquitousKeyValueStore.didChangeExternallyNotification)
-            .sink { [weak self] notification in
-                self?.handleCloudStoreChange(notification)
-            }
-            .store(in: &cancellables)
+        cloudObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: cloudStore,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleCloudStoreChange(notification)
+        }
 
         cloudStore.synchronize()
+    }
+
+    deinit {
+        if let cloudObserver {
+            NotificationCenter.default.removeObserver(cloudObserver)
+        }
     }
 
     var isConfigured: Bool {

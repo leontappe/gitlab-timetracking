@@ -4,39 +4,44 @@
 //
 
 import Foundation
-import Combine
 
 @MainActor
-final class ProjectManager: ObservableObject {
+@Observable
+final class ProjectManager {
     private let authManager: GitLabAuthManager
     private let settings: AppSettings
     private let api = GitLabAPI()
     private let cacheStore = ProjectCacheStore()
-    private var cancellables = Set<AnyCancellable>()
 
-    @Published var projects: [GitLabProject] = []
-    @Published var selectedProjectID: Int?
-    @Published var isLoadingProjects = false
-    @Published var isCreatingIssue = false
-    @Published var projectErrorMessage: String?
-    @Published var creationMessage: String?
-    @Published private(set) var lastProjectsRefreshAt: Date?
+    var projects: [GitLabProject] = []
+    var selectedProjectID: Int?
+    var isLoadingProjects = false
+    var isCreatingIssue = false
+    var projectErrorMessage: String?
+    var creationMessage: String?
+    private(set) var lastProjectsRefreshAt: Date?
 
     init(authManager: GitLabAuthManager) {
         self.authManager = authManager
         self.settings = authManager.settings
         loadCachedProjects()
         applyRememberedSelection()
-
-        authManager.$currentUser
-            .sink { [weak self] currentUser in
-                guard let self else { return }
-                guard currentUser != nil else { return }
-                self.loadProjectsOnDemand(forceRefresh: self.projects.isEmpty)
-            }
-            .store(in: &cancellables)
-
+        observeAuthChanges()
         loadProjectsOnDemand(forceRefresh: false)
+    }
+
+    private func observeAuthChanges() {
+        withObservationTracking {
+            _ = authManager.currentUser
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.authManager.currentUser != nil {
+                    self.loadProjectsOnDemand(forceRefresh: self.projects.isEmpty)
+                }
+                self.observeAuthChanges()
+            }
+        }
     }
 
     var orderedProjects: [GitLabProject] {

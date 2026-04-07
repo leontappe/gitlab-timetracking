@@ -5,7 +5,6 @@
 
 import Foundation
 import AppKit
-import Combine
 import CryptoKit
 
 struct GitLabOAuthToken: Codable {
@@ -47,13 +46,14 @@ enum GitLabAuthError: LocalizedError {
 }
 
 @MainActor
-final class GitLabAuthManager: ObservableObject {
+@Observable
+final class GitLabAuthManager {
     static let redirectURI = URL(string: "http://127.0.0.1:45873/oauth/callback")!
     static let redirectPort: UInt16 = 45873
 
-    @Published private(set) var currentUser: GitLabUser?
-    @Published private(set) var isAuthenticating = false
-    @Published private(set) var authError: String?
+    private(set) var currentUser: GitLabUser?
+    private(set) var isAuthenticating = false
+    private(set) var authError: String?
 
     let settings: AppSettings
 

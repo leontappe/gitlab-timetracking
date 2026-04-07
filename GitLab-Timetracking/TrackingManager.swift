@@ -4,10 +4,10 @@
 //
 
 import Foundation
-import Combine
 
 @MainActor
-final class TrackingManager: ObservableObject {
+@Observable
+final class TrackingManager {
     struct Session {
         let issue: GitLabIssue
         var startedAt: Date
@@ -22,13 +22,13 @@ final class TrackingManager: ObservableObject {
     private let api = GitLabAPI()
     private let sessionStore = SessionStore()
     private var checkpointTask: Task<Void, Never>?
-    @Published private(set) var lastRefreshAt: Date?
+    private(set) var lastRefreshAt: Date?
 
-    @Published var issues: [GitLabIssue] = []
-    @Published var activeSession: Session?
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var infoMessage = "Configure GitLab to start."
+    var issues: [GitLabIssue] = []
+    var activeSession: Session?
+    var isLoading = false
+    var errorMessage: String?
+    var infoMessage = "Configure GitLab to start."
 
     init(authManager: GitLabAuthManager) {
         self.authManager = authManager

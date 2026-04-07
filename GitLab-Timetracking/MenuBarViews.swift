@@ -5,7 +5,6 @@
 
 import SwiftUI
 import AppKit
-import Combine
 
 enum AppColors {
     static let trackingGreen = Color(red: 0.18, green: 0.62, blue: 0.33)
@@ -13,10 +12,11 @@ enum AppColors {
 }
 
 @MainActor
-final class MenuBarLabelClock: ObservableObject {
-    @Published private(set) var tick = 0
+@Observable
+final class MenuBarLabelClock {
+    private(set) var tick = 0
 
-    private var timer: Timer?
+    @ObservationIgnored nonisolated(unsafe) private var timer: Timer?
 
     func setRunning(_ isRunning: Bool) {
         if isRunning {
@@ -45,9 +45,9 @@ final class MenuBarLabelClock: ObservableObject {
 }
 
 struct MenuBarLabelView: View {
-    @ObservedObject var settings: AppSettings
-    @ObservedObject var tracker: TrackingManager
-    @StateObject private var clock = MenuBarLabelClock()
+    var settings: AppSettings
+    var tracker: TrackingManager
+    @State private var clock = MenuBarLabelClock()
 
     var body: some View {
         let _ = clock.tick
@@ -121,10 +121,10 @@ struct MenuBarLabelView: View {
 
 struct MenuBarContentView: View {
     @Environment(\.openSettings) private var openSettings
-    @ObservedObject var settings: AppSettings
-    @ObservedObject var authManager: GitLabAuthManager
-    @ObservedObject var projectManager: ProjectManager
-    @ObservedObject var tracker: TrackingManager
+    var settings: AppSettings
+    var authManager: GitLabAuthManager
+    var projectManager: ProjectManager
+    var tracker: TrackingManager
     @State private var newIssueTitle = ""
     @State private var newIssueDescription = ""
     @State private var assignIssueToMe = true

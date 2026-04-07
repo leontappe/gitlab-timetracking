@@ -6,10 +6,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var settings: AppSettings
-    @ObservedObject var authManager: GitLabAuthManager
-    @ObservedObject var projectManager: ProjectManager
-    @ObservedObject var tracker: TrackingManager
+    @Bindable var settings: AppSettings
+    var authManager: GitLabAuthManager
+    var projectManager: ProjectManager
+    var tracker: TrackingManager
 
     @State private var saveMessage: String?
     @State private var isSaving = false
