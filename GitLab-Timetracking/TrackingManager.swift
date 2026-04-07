@@ -254,10 +254,9 @@ final class TrackingManager {
         checkpointTask = Task { [weak self] in
             guard let self else { return }
             let seconds = interval ?? TimeInterval(checkpointMinutes * 60)
-            let nanoseconds = UInt64(max(seconds, 1) * 1_000_000_000)
 
             do {
-                try await Task.sleep(nanoseconds: nanoseconds)
+                try await Task.sleep(for: .seconds(max(seconds, 1)))
             } catch {
                 return
             }

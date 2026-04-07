@@ -11,63 +11,19 @@ enum AppColors {
     static let checkpointOrange = Color.orange
 }
 
-@MainActor
-@Observable
-final class MenuBarLabelClock {
-    private(set) var tick = 0
-
-    @ObservationIgnored nonisolated(unsafe) private var timer: Timer?
-
-    func setRunning(_ isRunning: Bool) {
-        if isRunning {
-            start()
-        } else {
-            stop()
-        }
-    }
-
-    private func start() {
-        guard timer == nil else { return }
-
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tick += 1
-        }
-    }
-
-    private func stop() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    deinit {
-        timer?.invalidate()
-    }
-}
-
 struct MenuBarLabelView: View {
     var settings: AppSettings
     var tracker: TrackingManager
-    @State private var clock = MenuBarLabelClock()
 
     var body: some View {
-        let _ = clock.tick
-
-        HStack() {
-            Image(systemName: statusSymbolName)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(statusColor, statusColor.opacity(1.0))
-                .font(.system(size: 20, weight: .bold))
-            Text(statusLabel)
-        }
-        .onAppear(perform: updateClockState)
-        .onChange(of: settings.showTrackedTimeInMenuBar) { _, _ in
-            updateClockState()
-        }
-        .onChange(of: tracker.isTracking) { _, _ in
-            updateClockState()
-        }
-        .onChange(of: tracker.activeIssue?.id) { _, _ in
-            updateClockState()
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            HStack {
+                Image(systemName: statusSymbolName)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(statusColor, statusColor.opacity(1.0))
+                    .font(.system(size: 20, weight: .bold))
+                Text(statusLabel)
+            }
         }
     }
 
@@ -114,13 +70,11 @@ struct MenuBarLabelView: View {
         return .secondary
     }
 
-    private func updateClockState() {
-        clock.setRunning(settings.showTrackedTimeInMenuBar && tracker.isTracking && tracker.activeIssue != nil)
-    }
 }
 
 struct MenuBarContentView: View {
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openURL) private var openURL
     var settings: AppSettings
     var authManager: GitLabAuthManager
     var projectManager: ProjectManager
@@ -222,7 +176,7 @@ struct MenuBarContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(Color(nsColor: .controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -236,7 +190,7 @@ struct MenuBarContentView: View {
                 .foregroundStyle(session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen)
 
             Button {
-                NSWorkspace.shared.open(session.issue.webURL)
+                openURL(session.issue.webURL)
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(session.issue.references.short)
@@ -306,7 +260,7 @@ struct MenuBarContentView: View {
                     createIssueStatus
                 }
                 .padding(12)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(Color(nsColor: .controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -421,7 +375,7 @@ struct MenuBarContentView: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(Color(isProjectListExpanded ? NSColor.textBackgroundColor : NSColor.controlBackgroundColor))
+        .background(Color(nsColor: isProjectListExpanded ? .textBackgroundColor : .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(Rectangle())
         .onTapGesture {
@@ -481,7 +435,7 @@ struct MenuBarContentView: View {
                 .frame(height: min(CGFloat(displayedProjects.count) * 44, 220))
             }
         }
-        .background(Color(NSColor.textBackgroundColor))
+        .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
     }
@@ -631,7 +585,7 @@ struct MenuBarContentView: View {
             closeProjectSelector()
             isCreateExpanded = false
             await tracker.refreshIssues()
-            NSWorkspace.shared.open(createdIssue.webURL)
+            openURL(createdIssue.webURL)
         }
     }
 
@@ -737,13 +691,13 @@ struct MenuBarContentView: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
-                                .background(Color(NSColor.controlBackgroundColor))
+                                .background(Color(nsColor: .controlBackgroundColor))
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
                                 Button("Open in GitLab") {
-                                    NSWorkspace.shared.open(issue.webURL)
+                                    openURL(issue.webURL)
                                 }
                                 Button("Close Issue") {
                                     Task {
@@ -792,7 +746,7 @@ struct MenuBarContentView: View {
             }
             .padding(16)
             .frame(maxWidth: 320, alignment: .leading)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Color(nsColor: .windowBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
