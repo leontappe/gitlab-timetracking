@@ -14,15 +14,21 @@ enum AppColors {
 struct MenuBarLabelView: View {
     var settings: AppSettings
     var tracker: TrackingManager
+    @State private var tick = 0
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            HStack {
-                Image(systemName: statusSymbolName)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(statusColor, statusColor.opacity(1.0))
-                    .font(.system(size: 20, weight: .bold))
-                Text(statusLabel)
+        let _ = tick
+        HStack {
+            Image(systemName: statusSymbolName)
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(statusColor, statusColor.opacity(1.0))
+                .font(.system(size: 20, weight: .bold))
+            Text(statusLabel)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                tick &+= 1
             }
         }
     }
