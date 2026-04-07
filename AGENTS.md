@@ -112,6 +112,12 @@ xcodebuild -project 'My GitLab Timetracking.xcodeproj' -scheme 'My GitLab Timetr
 - Prefer preserving the current menu bar UX instead of replacing it with a standard macOS window flow.
 - Be careful with existing user changes in the worktree.
 
+## Asset Files
+
+- The app icon lives in `My GitLab Timetracking/Timetracker Logo.icon/` and uses the Xcode `.icon` format (not the legacy `.appiconset` format).
+- The SVG source inside the `.icon` directory is extremely large. Do not attempt to read, parse, or validate it.
+- Treat the entire `.icon` directory and its contents as opaque binary assets — do not modify or regenerate them unless explicitly asked.
+
 ## Useful Notes for Future Agents
 
 - GitLab project data includes both display names and `path_with_namespace`.
