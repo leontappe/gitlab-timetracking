@@ -124,19 +124,28 @@ actor GitLabAPI {
     }
 
     func fetchAssignedIssues(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
-        let request = try makeRequest(
-            configuration: configuration,
-            path: "/api/v4/issues",
-            queryItems: [
-                URLQueryItem(name: "scope", value: "assigned_to_me"),
-                URLQueryItem(name: "state", value: "opened"),
-                URLQueryItem(name: "per_page", value: "100")
-            ]
-        )
+        var allIssues: [GitLabIssue] = []
+        var nextPage = "1"
 
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
-        return try decoder.decode([GitLabIssue].self, from: data)
+        while !nextPage.isEmpty {
+            let request = try makeRequest(
+                configuration: configuration,
+                path: "/api/v4/issues",
+                queryItems: [
+                    URLQueryItem(name: "scope", value: "assigned_to_me"),
+                    URLQueryItem(name: "state", value: "opened"),
+                    URLQueryItem(name: "per_page", value: "100"),
+                    URLQueryItem(name: "page", value: nextPage)
+                ]
+            )
+
+            let (data, response) = try await session.data(for: request)
+            let httpResponse = try validate(response: response, data: data)
+            allIssues += try decoder.decode([GitLabIssue].self, from: data)
+            nextPage = httpResponse.value(forHTTPHeaderField: "X-Next-Page") ?? ""
+        }
+
+        return allIssues
     }
 
     func fetchCurrentUser(configuration: AuthorizedGitLabConfiguration) async throws -> GitLabUser {
