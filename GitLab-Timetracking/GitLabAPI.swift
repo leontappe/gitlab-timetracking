@@ -277,7 +277,7 @@ actor GitLabAPI {
         bodyItems: [URLQueryItem] = []
     ) throws -> URLRequest {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)
-        components?.path = path
+        components?.path = configuration.baseURL.path + path
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
 
         guard let url = components?.url else {

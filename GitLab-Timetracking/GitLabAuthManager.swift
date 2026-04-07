@@ -189,7 +189,7 @@ final class GitLabAuthManager {
         codeChallenge: String
     ) throws -> URL {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)
-        components?.path = "/oauth/authorize"
+        components?.path = configuration.baseURL.path + "/oauth/authorize"
         components?.queryItems = [
             URLQueryItem(name: "client_id", value: configuration.clientID),
             URLQueryItem(name: "redirect_uri", value: Self.redirectURI.absoluteString),
@@ -213,7 +213,7 @@ final class GitLabAuthManager {
         codeVerifier: String
     ) async throws -> GitLabOAuthToken {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)
-        components?.path = "/oauth/token"
+        components?.path = configuration.baseURL.path + "/oauth/token"
 
         guard let url = components?.url else {
             throw GitLabAPIError.missingConfiguration
@@ -240,7 +240,7 @@ final class GitLabAuthManager {
         refreshToken: String
     ) async throws -> GitLabOAuthToken {
         var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: false)
-        components?.path = "/oauth/token"
+        components?.path = configuration.baseURL.path + "/oauth/token"
 
         guard let url = components?.url else {
             throw GitLabAPIError.missingConfiguration
