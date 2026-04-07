@@ -6,12 +6,17 @@
 import SwiftUI
 import AppKit
 
+extension Notification.Name {
+    static let openSettings = Notification.Name("openSettings")
+}
+
 enum AppColors {
     static let trackingGreen = Color(red: 0.18, green: 0.62, blue: 0.33)
     static let checkpointOrange = Color.orange
 }
 
 struct MenuBarLabelView: View {
+    @Environment(\.openSettings) private var openSettings
     var settings: AppSettings
     var tracker: TrackingManager
     @State private var tick = 0
@@ -30,6 +35,10 @@ struct MenuBarLabelView: View {
                 try? await Task.sleep(for: .seconds(1))
                 tick &+= 1
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+            openSettings()
+            NSApp.activate()
         }
     }
 
