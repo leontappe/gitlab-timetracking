@@ -120,6 +120,7 @@ struct MenuBarLabelView: View {
 }
 
 struct MenuBarContentView: View {
+    @Environment(\.openSettings) private var openSettings
     @ObservedObject var settings: AppSettings
     @ObservedObject var authManager: GitLabAuthManager
     @ObservedObject var projectManager: ProjectManager
@@ -192,7 +193,8 @@ struct MenuBarContentView: View {
             .help("Refresh issues")
 
             Button {
-                (NSApp.delegate as? AppDelegate)?.showSettingsWindow()
+                openSettings()
+                NSApp.activate()
             } label: {
                 Image(systemName: "gearshape")
             }

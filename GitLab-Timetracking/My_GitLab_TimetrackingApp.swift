@@ -48,14 +48,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCoordinator.shared.configure()
     }
 
-    func showSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate(ignoringOtherApps: true)
-
-        for window in NSApp.windows {
-            guard window.canBecomeKey else { continue }
-            window.orderFrontRegardless()
-            window.makeKeyAndOrderFront(nil)
-        }
-    }
 }
