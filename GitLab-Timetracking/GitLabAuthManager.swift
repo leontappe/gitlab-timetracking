@@ -136,7 +136,7 @@ final class GitLabAuthManager {
         token = nil
         currentUser = nil
         authError = nil
-        keychain.delete(account: settings.normalizedBaseURLString)
+        keychain.deleteAll()
     }
 
     func currentAuthorization() async throws -> AuthorizedGitLabConfiguration {

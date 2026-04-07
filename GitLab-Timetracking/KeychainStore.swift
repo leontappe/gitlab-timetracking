@@ -62,4 +62,13 @@ struct KeychainStore {
 
         SecItemDelete(query as CFDictionary)
     }
+
+    func deleteAll() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service
+        ]
+
+        SecItemDelete(query as CFDictionary)
+    }
 }
