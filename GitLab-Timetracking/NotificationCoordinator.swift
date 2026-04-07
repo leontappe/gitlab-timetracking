@@ -85,9 +85,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
                 }
 
                 if Task.isCancelled { return }
-                await MainActor.run {
-                    self.sendCheckpointNotification(for: issue, checkpointMinutes: checkpointMinutes)
-                }
+                self.sendCheckpointNotification(for: issue, checkpointMinutes: checkpointMinutes)
             }
         }
     }

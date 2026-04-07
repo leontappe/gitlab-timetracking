@@ -196,7 +196,7 @@ actor GitLabAPI {
         )
 
         let (data, response) = try await session.data(for: request)
-        _ = try validate(response: response, data: data)
+        try validate(response: response, data: data)
         return try decoder.decode(GitLabCreatedIssue.self, from: data)
     }
 
@@ -292,6 +292,7 @@ actor GitLabAPI {
         return request
     }
 
+    @discardableResult
     private func validate(response: URLResponse, data: Data) throws -> HTTPURLResponse {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GitLabAPIError.invalidResponse

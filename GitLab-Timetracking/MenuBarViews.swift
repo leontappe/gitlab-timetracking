@@ -69,7 +69,6 @@ struct MenuBarLabelView: View {
 
         return .secondary
     }
-
 }
 
 struct MenuBarContentView: View {
@@ -159,9 +158,7 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private var trackingOverviewSection: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let _ = context.date
-
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
             if let session = tracker.activeSession {
                 activeSection(session: session)
             } else {
