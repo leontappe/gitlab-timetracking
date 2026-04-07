@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		16DF0F7F2F7AE8F5008CA08E /* My GitLab Timetracking.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "My GitLab Timetracking.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		16DF0F7F2F7AE8F5008CA08E /* GitLab Timetracking.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GitLab Timetracking.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		16DF0F802F7AE8F5008CA08E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				16DF0F7F2F7AE8F5008CA08E /* My GitLab Timetracking.app */,
+				16DF0F7F2F7AE8F5008CA08E /* GitLab Timetracking.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		16DF0F7E2F7AE8F5008CA08E /* My GitLab Timetracking */ = {
+		16DF0F7E2F7AE8F5008CA08E /* GitLab Timetracking */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 16DF0F8C2F7AE8F7008CA08E /* Build configuration list for PBXNativeTarget "My GitLab Timetracking" */;
+			buildConfigurationList = 16DF0F8C2F7AE8F7008CA08E /* Build configuration list for PBXNativeTarget "GitLab Timetracking" */;
 			buildPhases = (
 				16DF0F7B2F7AE8F5008CA08E /* Sources */,
 				16DF0F7C2F7AE8F5008CA08E /* Frameworks */,
@@ -63,11 +63,11 @@
 			fileSystemSynchronizedGroups = (
 				16DF0F812F7AE8F5008CA08E /* GitLab-Timetracking */,
 			);
-			name = "My GitLab Timetracking";
+			name = "GitLab Timetracking";
 			packageProductDependencies = (
 			);
 			productName = "My GitLab Timetracking";
-			productReference = 16DF0F7F2F7AE8F5008CA08E /* My GitLab Timetracking.app */;
+			productReference = 16DF0F7F2F7AE8F5008CA08E /* GitLab Timetracking.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				16DF0F7E2F7AE8F5008CA08E /* My GitLab Timetracking */,
+				16DF0F7E2F7AE8F5008CA08E /* GitLab Timetracking */,
 			);
 		};
 /* End PBXProject section */
@@ -281,7 +281,7 @@
 				);
 				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tappe-it.gitlab-timetracking";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "${TARGET_NAME}";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -329,7 +329,7 @@
 				);
 				MARKETING_VERSION = 0.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tappe-it.gitlab-timetracking";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "${TARGET_NAME}";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -353,7 +353,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		16DF0F8C2F7AE8F7008CA08E /* Build configuration list for PBXNativeTarget "My GitLab Timetracking" */ = {
+		16DF0F8C2F7AE8F7008CA08E /* Build configuration list for PBXNativeTarget "GitLab Timetracking" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				16DF0F8D2F7AE8F7008CA08E /* Debug */,
