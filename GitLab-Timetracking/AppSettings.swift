@@ -24,6 +24,7 @@ final class AppSettings {
         static let recentProjectIDs = "gitlab.recentProjectIDs"
         static let recentIssueIDs = "gitlab.recentIssueIDs"
         static let checkpointMinutes = "tracking.checkpointMinutes"
+        static let notificationSound = "tracking.notificationSound"
     }
 
     private let defaults: UserDefaults
@@ -39,6 +40,7 @@ final class AppSettings {
     private(set) var recentProjectIDs: [Int]
     private(set) var recentIssueIDs: [Int]
     var checkpointMinutes: Int
+    var notificationSound: String
 
     init(
         defaults: UserDefaults = .standard,
@@ -57,6 +59,7 @@ final class AppSettings {
         let localRecentProjectIDs = defaults.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let localRecentIssueIDs = defaults.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
         let localCheckpointMinutes = defaults.object(forKey: Keys.checkpointMinutes) as? Int
+        let localNotificationSound = defaults.string(forKey: Keys.notificationSound) ?? ""
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
         let remoteGroupPath = cloudStore.string(forKey: Keys.gitLabGroupPath) ?? ""
@@ -67,6 +70,7 @@ final class AppSettings {
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
         let remoteCheckpointMinutes = cloudStore.object(forKey: Keys.checkpointMinutes) as? Int
+        let remoteNotificationSound = cloudStore.string(forKey: Keys.notificationSound) ?? ""
 
         gitLabBaseURL = remoteBaseURL.isEmpty ? localBaseURL : remoteBaseURL
         oauthClientID = remoteClientID.isEmpty ? localClientID : remoteClientID
@@ -81,8 +85,9 @@ final class AppSettings {
         recentProjectIDs = remoteRecentProjectIDs.isEmpty ? localRecentProjectIDs : remoteRecentProjectIDs
         recentIssueIDs = remoteRecentIssueIDs.isEmpty ? localRecentIssueIDs : remoteRecentIssueIDs
         checkpointMinutes = remoteCheckpointMinutes ?? localCheckpointMinutes ?? 20
+        notificationSound = remoteNotificationSound.isEmpty ? (localNotificationSound.isEmpty ? "Sosumi" : localNotificationSound) : remoteNotificationSound
 
-        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || showTrackedTimeInMenuBar || !showIssueReferenceInMenuBar || !gitLabGroupPaths.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty || checkpointMinutes != 20 {
+        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || showTrackedTimeInMenuBar || !showIssueReferenceInMenuBar || !gitLabGroupPaths.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty || checkpointMinutes != 20 || notificationSound != "Sosumi" {
             save()
         }
 
@@ -201,7 +206,8 @@ final class AppSettings {
             || changedKeys.contains(Keys.lastSelectedProjectID)
             || changedKeys.contains(Keys.recentProjectIDs)
             || changedKeys.contains(Keys.recentIssueIDs)
-            || changedKeys.contains(Keys.checkpointMinutes) {
+            || changedKeys.contains(Keys.checkpointMinutes)
+            || changedKeys.contains(Keys.notificationSound) {
             applyCloudValues()
         }
     }
@@ -217,6 +223,7 @@ final class AppSettings {
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
         let remoteCheckpointMinutes = cloudStore.object(forKey: Keys.checkpointMinutes) as? Int ?? 20
+        let remoteNotificationSound = cloudStore.string(forKey: Keys.notificationSound) ?? "Sosumi"
 
         let resolvedRemoteGroupPaths = Self.resolveGroupPaths(
             primary: remoteGroupPaths,
@@ -233,6 +240,7 @@ final class AppSettings {
         if recentProjectIDs != remoteRecentProjectIDs { recentProjectIDs = remoteRecentProjectIDs }
         if recentIssueIDs != remoteRecentIssueIDs { recentIssueIDs = remoteRecentIssueIDs }
         if checkpointMinutes != remoteCheckpointMinutes { checkpointMinutes = remoteCheckpointMinutes }
+        if notificationSound != remoteNotificationSound { notificationSound = remoteNotificationSound }
 
         let values = SettingsValues(
             baseURL: remoteBaseURL,
@@ -244,7 +252,8 @@ final class AppSettings {
             lastSelectedProjectID: remoteLastProjectID,
             recentProjectIDs: remoteRecentProjectIDs,
             recentIssueIDs: remoteRecentIssueIDs,
-            checkpointMinutes: remoteCheckpointMinutes
+            checkpointMinutes: remoteCheckpointMinutes,
+            notificationSound: remoteNotificationSound
         )
         writeToDefaults(values)
     }
@@ -260,6 +269,7 @@ final class AppSettings {
         let recentProjectIDs: [Int]
         let recentIssueIDs: [Int]
         let checkpointMinutes: Int
+        let notificationSound: String
     }
 
     private func currentSettingsValues() -> SettingsValues {
@@ -273,7 +283,8 @@ final class AppSettings {
             lastSelectedProjectID: lastSelectedProjectID,
             recentProjectIDs: recentProjectIDs,
             recentIssueIDs: recentIssueIDs,
-            checkpointMinutes: checkpointMinutes
+            checkpointMinutes: checkpointMinutes,
+            notificationSound: notificationSound
         )
     }
 
@@ -288,6 +299,7 @@ final class AppSettings {
         defaults.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
         defaults.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
         defaults.set(v.checkpointMinutes, forKey: Keys.checkpointMinutes)
+        defaults.set(v.notificationSound, forKey: Keys.notificationSound)
     }
 
     private func writeToCloudStore(_ v: SettingsValues) {
@@ -301,6 +313,7 @@ final class AppSettings {
         cloudStore.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
         cloudStore.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
         cloudStore.set(v.checkpointMinutes, forKey: Keys.checkpointMinutes)
+        cloudStore.set(v.notificationSound, forKey: Keys.notificationSound)
     }
 
     nonisolated private static func resolveGroupPaths(primary: [String], fallbackArray: [String], fallbackSingle: String) -> [String] {

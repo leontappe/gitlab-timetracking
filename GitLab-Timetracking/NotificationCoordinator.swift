@@ -54,7 +54,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         }
     }
 
-    func sendCheckpointNotification(for issue: GitLabIssue, checkpointMinutes: Int) {
+    func sendCheckpointNotification(for issue: GitLabIssue, checkpointMinutes: Int, soundName: String) {
         let content = UNMutableNotificationContent()
         content.title = issue.references.short
         content.subtitle = issue.title
@@ -70,10 +70,11 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         )
 
         UNUserNotificationCenter.current().add(request)
-        playReminderSound()
+        NSApp.requestUserAttention(.criticalRequest)
+        playReminderSound(named: soundName)
     }
 
-    func beginCheckpointReminderLoop(for issue: GitLabIssue, checkpointMinutes: Int, interval: TimeInterval = 180) {
+    func beginCheckpointReminderLoop(for issue: GitLabIssue, checkpointMinutes: Int, soundName: String, interval: TimeInterval = 180) {
         reminderTask?.cancel()
         reminderTask = Task { [weak self] in
             guard let self else { return }
@@ -86,7 +87,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
                 }
 
                 if Task.isCancelled { return }
-                self.sendCheckpointNotification(for: issue, checkpointMinutes: checkpointMinutes)
+                self.sendCheckpointNotification(for: issue, checkpointMinutes: checkpointMinutes, soundName: soundName)
             }
         }
     }
@@ -122,15 +123,16 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         }
     }
 
-    private func playReminderSound() {
-        let preferredNames = ["Submarine", "Funk", "Glass", "Hero"]
-
-        for name in preferredNames {
-            if let sound = NSSound(named: NSSound.Name(name)) {
-                alertSound = sound
+    private func playReminderSound(named soundName: String) {
+        if let sound = NSSound(named: NSSound.Name(soundName)) {
+            alertSound = sound
+            sound.volume = 1.0
+            sound.play()
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
                 sound.play()
-                return
             }
+            return
         }
 
         NSSound.beep()

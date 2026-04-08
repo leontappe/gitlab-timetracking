@@ -274,8 +274,8 @@ final class TrackingManager {
         await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
 
         guard activeSession != nil else { return }
-        NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
-        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
+        NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
         infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
     }
 
@@ -310,8 +310,8 @@ final class TrackingManager {
 
         if session.awaitingContinuation {
             infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
-            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
-            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             return
         }
 
@@ -330,8 +330,8 @@ final class TrackingManager {
             await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
 
             guard activeSession != nil else { return }
-            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes)
-            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes)
+            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
             return
         }

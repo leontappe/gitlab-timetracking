@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @Bindable var settings: AppSettings
@@ -164,6 +165,23 @@ struct SettingsView: View {
                 }
                 .onAppear {
                     useCustomInterval = ![5, 10, 15, 20, 25, 30, 45, 60].contains(settings.checkpointMinutes)
+                }
+                HStack {
+                    Picker("Notification sound", selection: $settings.notificationSound) {
+                        ForEach(["Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse", "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"], id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    Button {
+                        if let sound = NSSound(named: NSSound.Name(settings.notificationSound)) {
+                            sound.volume = 1.0
+                            sound.play()
+                        }
+                    } label: {
+                        Image(systemName: "speaker.wave.2")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Preview sound")
                 }
                 Text("Selecting an issue starts local tracking immediately. Every \(settings.checkpointMinutes) minutes the app books \(settings.checkpointMinutes) minutes to the issue in GitLab and asks whether to continue.")
                     .font(.caption)
