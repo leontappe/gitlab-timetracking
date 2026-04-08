@@ -179,10 +179,8 @@ final class TrackingManager {
         guard var session = activeSession, session.awaitingContinuation else { return }
 
         NotificationCoordinator.shared.clearCheckpointNotification()
-        let now = Date()
         session.awaitingContinuation = false
-        session.lastCheckpointAt = now
-        session.startedAt = now
+        session.lastCheckpointAt = Date()
         activeSession = session
         infoMessage = "Continuing \(session.issue.references.short)."
         scheduleCheckpoint()

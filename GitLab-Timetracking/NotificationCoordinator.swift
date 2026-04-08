@@ -60,6 +60,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         content.subtitle = issue.title
         content.body = "\(checkpointMinutes) minutes were added. Continue tracking this issue?"
         content.sound = .default
+        content.interruptionLevel = .timeSensitive
         content.categoryIdentifier = Self.categoryID
 
         let request = UNNotificationRequest(

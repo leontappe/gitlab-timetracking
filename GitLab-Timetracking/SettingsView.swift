@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var saveMessage: String?
     @State private var isSaving = false
     @State private var pendingGroupPath = ""
+    @State private var useCustomInterval = false
 
     private var availableGroupPaths: [String] {
         let projectGroups: [String] = projectManager.projects.compactMap { project in
@@ -131,10 +132,38 @@ struct SettingsView: View {
             Section("Time Tracking") {
                 Toggle("Show worked time in menu bar", isOn: $settings.showTrackedTimeInMenuBar)
                 Toggle("Show issue ID in menu bar", isOn: $settings.showIssueReferenceInMenuBar)
-                Picker("Notification interval", selection: $settings.checkpointMinutes) {
-                    ForEach([5, 10, 15, 20, 25, 30, 45, 60], id: \.self) { minutes in
-                        Text("\(minutes) min").tag(minutes)
+                HStack {
+                    let presets = [5, 10, 15, 20, 25, 30, 45, 60]
+
+                    Picker("Notification interval", selection: Binding(
+                        get: {
+                            useCustomInterval ? -1 : (presets.contains(settings.checkpointMinutes) ? settings.checkpointMinutes : -1)
+                        },
+                        set: { newValue in
+                            if newValue == -1 {
+                                useCustomInterval = true
+                            } else {
+                                useCustomInterval = false
+                                settings.checkpointMinutes = newValue
+                            }
+                        }
+                    )) {
+                        ForEach(presets, id: \.self) { minutes in
+                            Text("\(minutes) min").tag(minutes)
+                        }
+                        Text("Custom").tag(-1)
                     }
+
+                    if useCustomInterval {
+                        TextField("", value: $settings.checkpointMinutes, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("min")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onAppear {
+                    useCustomInterval = ![5, 10, 15, 20, 25, 30, 45, 60].contains(settings.checkpointMinutes)
                 }
                 Text("Selecting an issue starts local tracking immediately. Every \(settings.checkpointMinutes) minutes the app books \(settings.checkpointMinutes) minutes to the issue in GitLab and asks whether to continue.")
                     .font(.caption)
