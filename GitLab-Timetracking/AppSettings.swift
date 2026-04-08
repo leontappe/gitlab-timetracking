@@ -23,6 +23,7 @@ final class AppSettings {
         static let lastSelectedProjectID = "gitlab.lastSelectedProjectID"
         static let recentProjectIDs = "gitlab.recentProjectIDs"
         static let recentIssueIDs = "gitlab.recentIssueIDs"
+        static let checkpointMinutes = "tracking.checkpointMinutes"
     }
 
     private let defaults: UserDefaults
@@ -37,6 +38,7 @@ final class AppSettings {
     private(set) var lastSelectedProjectID: Int?
     private(set) var recentProjectIDs: [Int]
     private(set) var recentIssueIDs: [Int]
+    var checkpointMinutes: Int
 
     init(
         defaults: UserDefaults = .standard,
@@ -54,6 +56,7 @@ final class AppSettings {
         let localLastProjectID = defaults.object(forKey: Keys.lastSelectedProjectID) as? Int
         let localRecentProjectIDs = defaults.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let localRecentIssueIDs = defaults.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
+        let localCheckpointMinutes = defaults.object(forKey: Keys.checkpointMinutes) as? Int
         let remoteBaseURL = cloudStore.string(forKey: Keys.gitLabBaseURL) ?? ""
         let remoteClientID = cloudStore.string(forKey: Keys.oauthClientID) ?? ""
         let remoteGroupPath = cloudStore.string(forKey: Keys.gitLabGroupPath) ?? ""
@@ -63,6 +66,7 @@ final class AppSettings {
         let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
+        let remoteCheckpointMinutes = cloudStore.object(forKey: Keys.checkpointMinutes) as? Int
 
         gitLabBaseURL = remoteBaseURL.isEmpty ? localBaseURL : remoteBaseURL
         oauthClientID = remoteClientID.isEmpty ? localClientID : remoteClientID
@@ -76,8 +80,9 @@ final class AppSettings {
         lastSelectedProjectID = remoteLastProjectID ?? localLastProjectID
         recentProjectIDs = remoteRecentProjectIDs.isEmpty ? localRecentProjectIDs : remoteRecentProjectIDs
         recentIssueIDs = remoteRecentIssueIDs.isEmpty ? localRecentIssueIDs : remoteRecentIssueIDs
+        checkpointMinutes = remoteCheckpointMinutes ?? localCheckpointMinutes ?? 20
 
-        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || showTrackedTimeInMenuBar || !showIssueReferenceInMenuBar || !gitLabGroupPaths.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty {
+        if !gitLabBaseURL.isEmpty || !oauthClientID.isEmpty || showTrackedTimeInMenuBar || !showIssueReferenceInMenuBar || !gitLabGroupPaths.isEmpty || lastSelectedProjectID != nil || !recentProjectIDs.isEmpty || !recentIssueIDs.isEmpty || checkpointMinutes != 20 {
             save()
         }
 
@@ -195,7 +200,8 @@ final class AppSettings {
             || changedKeys.contains(Keys.gitLabGroupPaths)
             || changedKeys.contains(Keys.lastSelectedProjectID)
             || changedKeys.contains(Keys.recentProjectIDs)
-            || changedKeys.contains(Keys.recentIssueIDs) {
+            || changedKeys.contains(Keys.recentIssueIDs)
+            || changedKeys.contains(Keys.checkpointMinutes) {
             applyCloudValues()
         }
     }
@@ -210,6 +216,7 @@ final class AppSettings {
         let remoteLastProjectID = cloudStore.object(forKey: Keys.lastSelectedProjectID) as? Int
         let remoteRecentProjectIDs = cloudStore.array(forKey: Keys.recentProjectIDs) as? [Int] ?? []
         let remoteRecentIssueIDs = cloudStore.array(forKey: Keys.recentIssueIDs) as? [Int] ?? []
+        let remoteCheckpointMinutes = cloudStore.object(forKey: Keys.checkpointMinutes) as? Int ?? 20
 
         let resolvedRemoteGroupPaths = Self.resolveGroupPaths(
             primary: remoteGroupPaths,
@@ -225,6 +232,7 @@ final class AppSettings {
         if lastSelectedProjectID != remoteLastProjectID { lastSelectedProjectID = remoteLastProjectID }
         if recentProjectIDs != remoteRecentProjectIDs { recentProjectIDs = remoteRecentProjectIDs }
         if recentIssueIDs != remoteRecentIssueIDs { recentIssueIDs = remoteRecentIssueIDs }
+        if checkpointMinutes != remoteCheckpointMinutes { checkpointMinutes = remoteCheckpointMinutes }
 
         let values = SettingsValues(
             baseURL: remoteBaseURL,
@@ -235,7 +243,8 @@ final class AppSettings {
             legacyGroupPath: remoteGroupPath,
             lastSelectedProjectID: remoteLastProjectID,
             recentProjectIDs: remoteRecentProjectIDs,
-            recentIssueIDs: remoteRecentIssueIDs
+            recentIssueIDs: remoteRecentIssueIDs,
+            checkpointMinutes: remoteCheckpointMinutes
         )
         writeToDefaults(values)
     }
@@ -250,6 +259,7 @@ final class AppSettings {
         let lastSelectedProjectID: Int?
         let recentProjectIDs: [Int]
         let recentIssueIDs: [Int]
+        let checkpointMinutes: Int
     }
 
     private func currentSettingsValues() -> SettingsValues {
@@ -262,7 +272,8 @@ final class AppSettings {
             legacyGroupPath: normalizedGroupPaths.first ?? "",
             lastSelectedProjectID: lastSelectedProjectID,
             recentProjectIDs: recentProjectIDs,
-            recentIssueIDs: recentIssueIDs
+            recentIssueIDs: recentIssueIDs,
+            checkpointMinutes: checkpointMinutes
         )
     }
 
@@ -276,6 +287,7 @@ final class AppSettings {
         defaults.set(v.lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
         defaults.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
         defaults.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
+        defaults.set(v.checkpointMinutes, forKey: Keys.checkpointMinutes)
     }
 
     private func writeToCloudStore(_ v: SettingsValues) {
@@ -288,6 +300,7 @@ final class AppSettings {
         cloudStore.set(v.lastSelectedProjectID, forKey: Keys.lastSelectedProjectID)
         cloudStore.set(v.recentProjectIDs, forKey: Keys.recentProjectIDs)
         cloudStore.set(v.recentIssueIDs, forKey: Keys.recentIssueIDs)
+        cloudStore.set(v.checkpointMinutes, forKey: Keys.checkpointMinutes)
     }
 
     nonisolated private static func resolveGroupPaths(primary: [String], fallbackArray: [String], fallbackSingle: String) -> [String] {

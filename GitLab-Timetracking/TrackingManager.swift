@@ -15,7 +15,7 @@ final class TrackingManager {
         var awaitingContinuation: Bool
     }
 
-    let checkpointMinutes = 20
+    var checkpointMinutes: Int { settings.checkpointMinutes }
 
     private let authManager: GitLabAuthManager
     private let settings: AppSettings
