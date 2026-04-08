@@ -183,7 +183,7 @@ struct SettingsView: View {
                     .buttonStyle(.borderless)
                     .help("Preview sound")
                 }
-                Text("Selecting an issue starts local tracking immediately. Every \(settings.checkpointMinutes) minutes the app books \(settings.checkpointMinutes) minutes to the issue in GitLab and asks whether to continue.")
+                Text("Selecting an issue starts tracking. Every \(settings.checkpointMinutes) minutes the app asks whether to continue. Time is accumulated and booked to GitLab as one entry when you stop.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -13,6 +13,7 @@ final class TrackingManager {
         var startedAt: Date
         var lastCheckpointAt: Date
         var awaitingContinuation: Bool
+        var accumulatedMinutes: Int
     }
 
     var checkpointMinutes: Int { settings.checkpointMinutes }
@@ -40,6 +41,9 @@ final class TrackingManager {
         NotificationCoordinator.shared.onStop = { [weak self] in
             self?.finishAwaitingSession()
         }
+        NotificationCoordinator.shared.onStopAndBookAll = { [weak self] in
+            self?.finishAwaitingSessionIncludingElapsed()
+        }
 
         Task {
             await restorePersistedSessionIfNeeded()
@@ -56,16 +60,12 @@ final class TrackingManager {
     }
 
     func currentCycleElapsed(for session: Session) -> TimeInterval {
-        if session.awaitingContinuation {
-            return max(0, session.lastCheckpointAt.timeIntervalSince(session.startedAt))
-        }
-
-        return max(0, Date().timeIntervalSince(session.startedAt))
+        max(0, Date().timeIntervalSince(session.startedAt))
     }
 
     func displayedTotalTrackedSeconds(for issue: GitLabIssue) -> Int {
         let baseSeconds = issue.timeStats.totalTimeSpent
-        guard let activeSession, activeSession.issue.id == issue.id, !activeSession.awaitingContinuation else {
+        guard let activeSession, activeSession.issue.id == issue.id else {
             return baseSeconds
         }
 
@@ -146,7 +146,8 @@ final class TrackingManager {
             issue: issue,
             startedAt: now,
             lastCheckpointAt: now,
-            awaitingContinuation: false
+            awaitingContinuation: false,
+            accumulatedMinutes: 0
         )
         errorMessage = nil
         infoMessage = ""
@@ -181,17 +182,18 @@ final class TrackingManager {
         NotificationCoordinator.shared.clearCheckpointNotification()
 
         guard let session = activeSession else { return }
-        let pendingMinutes = session.awaitingContinuation ? 0 : minutesSinceLastCheckpoint(session: session)
+        let partialMinutes = session.awaitingContinuation ? 0 : minutesSinceLastCheckpoint(session: session)
+        let totalMinutes = session.accumulatedMinutes + partialMinutes
         activeSession = nil
         sessionStore.clear()
 
-        guard pendingMinutes > 0 else {
+        guard totalMinutes > 0 else {
             infoMessage = "Stopped tracking \(session.issue.references.short)."
             return
         }
 
         Task {
-            await book(issue: session.issue, minutes: pendingMinutes, followUp: "Stopped tracking \(session.issue.references.short).")
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
         }
     }
 
@@ -207,16 +209,55 @@ final class TrackingManager {
         persistActiveSession()
     }
 
+    func stopTrackingWithoutBooking() {
+        checkpointTask?.cancel()
+        checkpointTask = nil
+        NotificationCoordinator.shared.clearCheckpointNotification()
+
+        let ref = activeSession?.issue.references.short ?? ""
+        activeSession = nil
+        sessionStore.clear()
+        infoMessage = "Discarded tracking for \(ref)."
+    }
+
     func finishAwaitingSession() {
         checkpointTask?.cancel()
         checkpointTask = nil
         NotificationCoordinator.shared.clearCheckpointNotification()
 
-        if let session = activeSession {
-            infoMessage = "Tracked \(checkpointMinutes) minutes on \(session.issue.references.short)."
-        }
+        guard let session = activeSession else { return }
+        let totalMinutes = session.accumulatedMinutes
         activeSession = nil
         sessionStore.clear()
+
+        guard totalMinutes > 0 else {
+            infoMessage = "Stopped tracking \(session.issue.references.short)."
+            return
+        }
+
+        Task {
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
+        }
+    }
+
+    func finishAwaitingSessionIncludingElapsed() {
+        checkpointTask?.cancel()
+        checkpointTask = nil
+        NotificationCoordinator.shared.clearCheckpointNotification()
+
+        guard let session = activeSession else { return }
+        let totalMinutes = session.accumulatedMinutes + minutesSinceLastCheckpoint(session: session)
+        activeSession = nil
+        sessionStore.clear()
+
+        guard totalMinutes > 0 else {
+            infoMessage = "Stopped tracking \(session.issue.references.short)."
+            return
+        }
+
+        Task {
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
+        }
     }
 
     func saveSettings() async {
@@ -287,16 +328,14 @@ final class TrackingManager {
         guard var session = activeSession, !session.awaitingContinuation else { return }
 
         checkpointTask = nil
+        session.accumulatedMinutes += checkpointMinutes
         session.awaitingContinuation = true
         activeSession = session
         persistActiveSession()
 
-        await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
-
-        guard activeSession != nil else { return }
+        infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
         NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
         NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
-        infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
     }
 
     private func book(issue: GitLabIssue, minutes: Int, followUp: String) async {
@@ -323,13 +362,14 @@ final class TrackingManager {
             issue: persisted.issue,
             startedAt: persisted.startedAt,
             lastCheckpointAt: persisted.lastCheckpointAt,
-            awaitingContinuation: persisted.awaitingContinuation
+            awaitingContinuation: persisted.awaitingContinuation,
+            accumulatedMinutes: persisted.accumulatedMinutes
         )
 
         activeSession = session
 
         if session.awaitingContinuation {
-            infoMessage = "Awaiting confirmation on \(session.issue.references.short)."
+            infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
             NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             return
@@ -344,15 +384,14 @@ final class TrackingManager {
         let checkpointInterval = TimeInterval(checkpointMinutes * 60)
 
         if elapsed >= checkpointInterval {
+            session.accumulatedMinutes += checkpointMinutes
             session.awaitingContinuation = true
             activeSession = session
             persistActiveSession()
-            await book(issue: session.issue, minutes: checkpointMinutes, followUp: "\(checkpointMinutes) minutes added to \(session.issue.references.short).")
 
-            guard activeSession != nil else { return }
+            infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
             NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
-            infoMessage = "Waiting for confirmation on \(session.issue.references.short)."
             return
         }
 
@@ -371,7 +410,8 @@ final class TrackingManager {
                 issue: activeSession.issue,
                 startedAt: activeSession.startedAt,
                 lastCheckpointAt: activeSession.lastCheckpointAt,
-                awaitingContinuation: activeSession.awaitingContinuation
+                awaitingContinuation: activeSession.awaitingContinuation,
+                accumulatedMinutes: activeSession.accumulatedMinutes
             )
         )
     }

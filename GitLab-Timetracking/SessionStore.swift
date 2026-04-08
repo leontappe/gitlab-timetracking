@@ -10,6 +10,7 @@ struct PersistedSession: Codable {
     let startedAt: Date
     let lastCheckpointAt: Date
     let awaitingContinuation: Bool
+    let accumulatedMinutes: Int
 }
 
 struct SessionStore {

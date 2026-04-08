@@ -101,6 +101,7 @@ struct MenuBarContentView: View {
     @State private var projectSearch = ""
     @State private var highlightedProjectID: Int?
     @State private var issuePendingDeleteConfirmation: GitLabIssue?
+    @State private var issuePendingSwitchConfirmation: GitLabIssue?
     @FocusState private var isProjectSearchFocused: Bool
 
     var body: some View {
@@ -123,6 +124,10 @@ struct MenuBarContentView: View {
                 issuesSection
             }
             .padding(16)
+
+            if let issue = issuePendingSwitchConfirmation {
+                switchConfirmationOverlay(newIssue: issue)
+            }
 
             if let issue = issuePendingDeleteConfirmation {
                 deleteConfirmationOverlay(issue: issue)
@@ -686,9 +691,13 @@ struct MenuBarContentView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(tracker.orderedIssues) { issue in
+                        ForEach(tracker.orderedIssues.filter { $0.id != tracker.activeSession?.issue.id }) { issue in
                             Button {
-                                tracker.startTracking(issue: issue)
+                                if tracker.activeSession != nil, tracker.activeSession?.issue.id != issue.id {
+                                    issuePendingSwitchConfirmation = issue
+                                } else {
+                                    tracker.startTracking(issue: issue)
+                                }
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(issue.references.short)
@@ -723,6 +732,75 @@ struct MenuBarContentView: View {
                 }
                 .scrollIndicators(.never)
             }
+        }
+    }
+
+    private func switchConfirmationOverlay(newIssue: GitLabIssue) -> some View {
+        let session = tracker.activeSession!
+        let accumulated = session.accumulatedMinutes
+        let partial = max(1, Int(Date().timeIntervalSince(session.lastCheckpointAt) / 60))
+        let total = accumulated + partial
+
+        return ZStack {
+            Color.black.opacity(0.2)
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Switch Issue?")
+                    .font(.headline)
+
+                Text("Currently tracking \(session.issue.references.short). How should the tracked time be handled?")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                VStack(spacing: 8) {
+                    if accumulated > 0 {
+                        Button {
+                            tracker.finishAwaitingSession()
+                            tracker.startTracking(issue: newIssue)
+                            issuePendingSwitchConfirmation = nil
+                        } label: {
+                            Text("Book \(accumulated)m & Switch")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .controlSize(.large)
+                    }
+
+                    Button {
+                        tracker.finishAwaitingSessionIncludingElapsed()
+                        tracker.startTracking(issue: newIssue)
+                        issuePendingSwitchConfirmation = nil
+                    } label: {
+                        Text("Book \(total)m & Switch")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+
+                    Button {
+                        tracker.stopTrackingWithoutBooking()
+                        tracker.startTracking(issue: newIssue)
+                        issuePendingSwitchConfirmation = nil
+                    } label: {
+                        Text("Discard & Switch")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+
+                    Button("Cancel") {
+                        issuePendingSwitchConfirmation = nil
+                    }
+                    .controlSize(.large)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: 320, alignment: .leading)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         }
     }
 
