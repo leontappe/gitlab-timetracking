@@ -113,7 +113,7 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
     ) async {
         await MainActor.run {
             switch response.actionIdentifier {
-            case Self.continueActionID:
+            case Self.continueActionID, UNNotificationDefaultActionIdentifier:
                 onContinue?()
             case Self.stopActionID:
                 onStop?()
