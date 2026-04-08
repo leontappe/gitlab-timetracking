@@ -231,6 +231,17 @@ actor GitLabAPI {
         return decoder
     }
 
+    func fetchIssue(projectID: Int, iid: Int, configuration: AuthorizedGitLabConfiguration) async throws -> GitLabIssue {
+        let request = try makeRequest(
+            configuration: configuration,
+            path: "/api/v4/projects/\(projectID)/issues/\(iid)"
+        )
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decoder.decode(GitLabIssue.self, from: data)
+    }
+
     func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
         let path = "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)/add_spent_time"
         let request = try makeRequest(

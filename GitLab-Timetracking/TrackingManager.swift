@@ -9,7 +9,7 @@ import Foundation
 @Observable
 final class TrackingManager {
     struct Session {
-        let issue: GitLabIssue
+        var issue: GitLabIssue
         var startedAt: Date
         var lastCheckpointAt: Date
         var awaitingContinuation: Bool
@@ -153,6 +153,26 @@ final class TrackingManager {
         settings.rememberUsedIssue(id: issue.id)
         scheduleCheckpoint()
         persistActiveSession()
+
+        Task {
+            await refreshActiveIssue()
+        }
+    }
+
+    private func refreshActiveIssue() async {
+        guard let session = activeSession else { return }
+        do {
+            let configuration = try await authManager.currentAuthorization()
+            let fresh = try await api.fetchIssue(projectID: session.issue.projectID, iid: session.issue.iid, configuration: configuration)
+            if activeSession?.issue.id == fresh.id {
+                activeSession?.issue = fresh
+            }
+            if let index = issues.firstIndex(where: { $0.id == fresh.id }) {
+                issues[index] = fresh
+            }
+        } catch {
+            // Non-critical — keep tracking with stale data
+        }
     }
 
     func stopTracking() {
