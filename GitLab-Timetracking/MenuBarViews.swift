@@ -425,13 +425,11 @@ struct MenuBarContentView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(displayedProjects), id: \.id) { project in
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(displayedProjects, id: \.id) { project in
                                 projectRow(project, isHighlighted: project.id == highlightedProjectID)
                                     .id(project.id)
-                                if project.id != displayedProjects.last?.id {
-                                    Divider()
-                                }
+                                Divider()
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -548,7 +546,7 @@ struct MenuBarContentView: View {
     }
 
     private var displayedProjects: [GitLabProject] {
-        Array(filteredProjects.prefix(25))
+        filteredProjects
     }
 
     private func openProjectSelector() {
