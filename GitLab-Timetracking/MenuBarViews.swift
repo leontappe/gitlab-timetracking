@@ -241,6 +241,9 @@ struct MenuBarContentView: View {
                     Button("Continue") {
                         tracker.continueAfterCheckpoint()
                     }
+                    Button("Stop & Book All") {
+                        tracker.finishAwaitingSessionIncludingElapsed()
+                    }
                     Button("Stop") {
                         tracker.finishAwaitingSession()
                     }
