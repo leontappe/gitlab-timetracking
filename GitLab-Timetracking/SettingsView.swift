@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 struct SettingsView: View {
     @Bindable var settings: AppSettings
@@ -128,6 +129,21 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+            }
+
+            Section("General") {
+                Toggle("Launch at Login", isOn: Binding(
+                    get: { SMAppService.mainApp.status == .enabled },
+                    set: { enabled in
+                        do {
+                            if enabled {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                        } catch {}
+                    }
+                ))
             }
 
             Section("Time Tracking") {

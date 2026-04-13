@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @main
 struct My_GitLab_TimetrackingApp: App {
@@ -74,6 +75,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, let statusItem else { return }
             let menu = NSMenu()
 
+            let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: #selector(self.toggleLaunchAtLogin(_:)), keyEquivalent: "")
+            launchAtLoginItem.target = self
+            launchAtLoginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+            menu.addItem(launchAtLoginItem)
+
+            menu.addItem(.separator())
+
             let settingsItem = NSMenuItem(title: "Settings…", action: #selector(self.openSettings), keyEquivalent: ",")
             settingsItem.target = self
             menu.addItem(settingsItem)
@@ -87,6 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.menu = nil
         }
         button.addSubview(handler)
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            // silently ignore – the OS may show its own alert
+        }
     }
 
     @objc private func openSettings() {
