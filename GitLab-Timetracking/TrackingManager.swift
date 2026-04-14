@@ -16,6 +16,20 @@ final class TrackingManager {
         var accumulatedMinutes: Int
     }
 
+    // MARK: - Testable calculation helpers
+
+    nonisolated static func minutesBetween(from: Date, to: Date) -> Int {
+        max(1, Int(to.timeIntervalSince(from) / 60))
+    }
+
+    nonisolated static func applyCheckpoint(to session: Session, checkpointMinutes: Int, at now: Date) -> Session {
+        var updated = session
+        updated.accumulatedMinutes += checkpointMinutes
+        updated.lastCheckpointAt = now
+        updated.awaitingContinuation = true
+        return updated
+    }
+
     var checkpointMinutes: Int { settings.checkpointMinutes }
 
     private let authManager: GitLabAuthManager
@@ -325,17 +339,16 @@ final class TrackingManager {
     }
 
     private func handleCheckpoint() async {
-        guard var session = activeSession, !session.awaitingContinuation else { return }
+        guard let session = activeSession, !session.awaitingContinuation else { return }
 
         checkpointTask = nil
-        session.accumulatedMinutes += checkpointMinutes
-        session.awaitingContinuation = true
-        activeSession = session
+        let updated = Self.applyCheckpoint(to: session, checkpointMinutes: checkpointMinutes, at: Date())
+        activeSession = updated
         persistActiveSession()
 
-        infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
-        NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
-        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+        infoMessage = "\(updated.accumulatedMinutes) minutes accumulated on \(updated.issue.references.short)."
+        NotificationCoordinator.shared.sendCheckpointNotification(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+        NotificationCoordinator.shared.beginCheckpointReminderLoop(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
     }
 
     private func book(issue: GitLabIssue, minutes: Int, followUp: String) async {
@@ -350,7 +363,7 @@ final class TrackingManager {
     }
 
     private func minutesSinceLastCheckpoint(session: Session) -> Int {
-        max(1, Int(Date().timeIntervalSince(session.lastCheckpointAt) / 60))
+        Self.minutesBetween(from: session.lastCheckpointAt, to: Date())
     }
 
     private func restorePersistedSessionIfNeeded() async {
@@ -384,14 +397,14 @@ final class TrackingManager {
         let checkpointInterval = TimeInterval(checkpointMinutes * 60)
 
         if elapsed >= checkpointInterval {
-            session.accumulatedMinutes += checkpointMinutes
-            session.awaitingContinuation = true
-            activeSession = session
+            let checkpointFiredAt = session.lastCheckpointAt.addingTimeInterval(checkpointInterval)
+            let updated = Self.applyCheckpoint(to: session, checkpointMinutes: checkpointMinutes, at: checkpointFiredAt)
+            activeSession = updated
             persistActiveSession()
 
-            infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
-            NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
-            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+            infoMessage = "\(updated.accumulatedMinutes) minutes accumulated on \(updated.issue.references.short)."
+            NotificationCoordinator.shared.sendCheckpointNotification(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
+            NotificationCoordinator.shared.beginCheckpointReminderLoop(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             return
         }
 
