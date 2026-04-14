@@ -204,6 +204,28 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("About") {
+                let info = Bundle.main.infoDictionary
+                let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+                let build = info?["CFBundleVersion"] as? String ?? "—"
+                let copyright = info?["NSHumanReadableCopyright"] as? String ?? ""
+                let appName = info?["CFBundleName"] as? String ?? "GitLab Timetracking"
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(appName)
+                        .font(.headline)
+                    Text("Version \(version) (\(build))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    if !copyright.isEmpty {
+                        Text(copyright)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section {
                 HStack {
                     Button("Save and Refresh") {
