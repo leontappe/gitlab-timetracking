@@ -89,7 +89,13 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("Register a GitLab OAuth application for a public client with redirect URI `\(GitLabAuthManager.redirectURI.absoluteString)` and scope `api`.")
+                LabeledContent("Callback URL") {
+                    Text(GitLabAuthManager.redirectURI.absoluteString)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("Register a GitLab OAuth application for a public client with the callback URL above and scope `api`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
