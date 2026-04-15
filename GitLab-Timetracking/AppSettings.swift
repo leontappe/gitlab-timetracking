@@ -30,6 +30,7 @@ final class AppSettings {
     private let defaults: UserDefaults
     private let cloudStore: NSUbiquitousKeyValueStore
     private var cloudObserver: (any NSObjectProtocol)?
+    private var lastPersistedValues: SettingsValues?
 
     var gitLabBaseURL: String
     var oauthClientID: String
@@ -149,6 +150,8 @@ final class AppSettings {
 
     func save() {
         let values = currentSettingsValues()
+        guard values != lastPersistedValues else { return }
+        lastPersistedValues = values
         writeToDefaults(values)
         writeToCloudStore(values)
         cloudStore.synchronize()
@@ -256,9 +259,10 @@ final class AppSettings {
             notificationSound: remoteNotificationSound
         )
         writeToDefaults(values)
+        lastPersistedValues = values
     }
 
-    private struct SettingsValues {
+    private struct SettingsValues: Equatable {
         let baseURL: String
         let clientID: String
         let showTrackedTimeInMenuBar: Bool

@@ -36,6 +36,7 @@ final class TrackingManager {
     private let settings: AppSettings
     private let api = GitLabAPI()
     private let sessionStore = SessionStore()
+    private let historyStore = BookingHistoryStore()
     private var checkpointTask: Task<Void, Never>?
     private(set) var lastRefreshAt: Date?
 
@@ -44,10 +45,17 @@ final class TrackingManager {
     var isLoading = false
     var errorMessage: String?
     var infoMessage = "Configure GitLab to start."
+    var bookingHistory: [BookingHistoryEntry] = []
+    var isSyncingHistory = false
+    var historySyncError: String?
+    private(set) var lastHistorySyncAt: Date?
+    private(set) var lastSyncedCutoff: Date?
+    private var hasSyncedHistoryAtLeastOnce = false
 
     init(authManager: GitLabAuthManager) {
         self.authManager = authManager
         self.settings = authManager.settings
+        self.bookingHistory = historyStore.load()
 
         NotificationCoordinator.shared.onContinue = { [weak self] in
             self?.continueAfterCheckpoint()
@@ -73,8 +81,15 @@ final class TrackingManager {
         activeSession?.issue
     }
 
-    func currentCycleElapsed(for session: Session) -> TimeInterval {
-        max(0, Date().timeIntervalSince(session.startedAt))
+    func secondsSinceLastCheckpoint(for session: Session) -> Int {
+        Int(max(0, Date().timeIntervalSince(session.lastCheckpointAt)))
+    }
+
+    func defaultStopSeconds(for session: Session) -> Int {
+        if session.awaitingContinuation {
+            return session.accumulatedMinutes * 60
+        }
+        return session.accumulatedMinutes * 60 + secondsSinceLastCheckpoint(for: session)
     }
 
     func plannedBookingMinutes(for session: Session, includingCurrentCycle: Bool) -> Int {
@@ -90,7 +105,7 @@ final class TrackingManager {
             return baseSeconds
         }
 
-        return baseSeconds + Int(currentCycleElapsed(for: activeSession))
+        return baseSeconds + defaultStopSeconds(for: activeSession)
     }
 
     func formattedDuration(seconds: Int) -> String {
@@ -364,9 +379,103 @@ final class TrackingManager {
             try await api.addSpentTime(issue: issue, duration: "\(minutes)m", configuration: configuration)
             errorMessage = nil
             infoMessage = followUp
+
+            let entry = BookingHistoryEntry(
+                id: UUID(),
+                issueID: issue.id,
+                issueReference: issue.references.short,
+                issueTitle: issue.title,
+                issueWebURL: issue.webURL,
+                minutes: minutes,
+                bookedAt: Date()
+            )
+            bookingHistory = historyStore.append(entry)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func clearBookingHistory() {
+        historyStore.clear()
+        bookingHistory = []
+    }
+
+    func syncHistoryFromGitLab(cutoff: Date? = nil, force: Bool = false) async {
+        guard !isSyncingHistory else { return }
+
+        if !force, isSyncCoveredBy(existingCutoff: lastSyncedCutoff, newCutoff: cutoff), hasSyncedHistoryAtLeastOnce {
+            return
+        }
+
+        guard authManager.isAuthenticated, let currentUserID = authManager.currentUser?.id else {
+            historySyncError = "Connect your GitLab account to sync history."
+            return
+        }
+
+        isSyncingHistory = true
+        historySyncError = nil
+
+        do {
+            let configuration = try await authManager.currentAuthorization()
+            let closedIssues = try await api.fetchClosedAssignedIssues(updatedAfter: cutoff, configuration: configuration)
+
+            var issuesByID: [Int: GitLabIssue] = [:]
+            for issue in issues where cutoff.map({ issue.updatedAt >= $0 }) ?? true {
+                issuesByID[issue.id] = issue
+            }
+            for issue in closedIssues {
+                issuesByID[issue.id] = issue
+            }
+            let snapshotIssues = Array(issuesByID.values)
+            var remoteEntries: [BookingHistoryEntry] = []
+
+            for issue in snapshotIssues {
+                let notes = try await api.fetchIssueNotes(projectID: issue.projectID, issueIID: issue.iid, configuration: configuration)
+                for note in notes where note.system && note.author.id == currentUserID {
+                    if let cutoff, note.createdAt < cutoff {
+                        continue
+                    }
+
+                    guard let minutes = GitLabTimeNoteParser.addedMinutes(from: note.body), minutes > 0 else {
+                        continue
+                    }
+
+                    remoteEntries.append(
+                        BookingHistoryEntry(
+                            id: UUID(),
+                            issueID: issue.id,
+                            issueReference: issue.references.short,
+                            issueTitle: issue.title,
+                            issueWebURL: issue.webURL,
+                            minutes: minutes,
+                            bookedAt: note.createdAt,
+                            gitLabEventID: note.id
+                        )
+                    )
+                }
+            }
+
+            bookingHistory = historyStore.mergeRemote(remoteEntries)
+            lastHistorySyncAt = Date()
+            lastSyncedCutoff = narrowerCutoff(existing: lastSyncedCutoff, new: cutoff)
+            hasSyncedHistoryAtLeastOnce = true
+        } catch {
+            historySyncError = error.localizedDescription
+        }
+
+        isSyncingHistory = false
+    }
+
+    private func isSyncCoveredBy(existingCutoff: Date?, newCutoff: Date?) -> Bool {
+        guard let existingCutoff else { return true }
+        guard let newCutoff else { return false }
+        return newCutoff >= existingCutoff
+    }
+
+    private func narrowerCutoff(existing: Date?, new: Date?) -> Date? {
+        guard let existing else { return nil }
+        guard let new else { return nil }
+        return min(existing, new)
     }
 
     private func minutesSinceLastCheckpoint(session: Session) -> Int {

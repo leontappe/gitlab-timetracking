@@ -74,6 +74,22 @@ struct GitLabProject: Codable, Identifiable, Hashable {
     }
 }
 
+struct GitLabIssueNote: Codable, Hashable, Identifiable {
+    let id: Int
+    let body: String
+    let system: Bool
+    let author: GitLabUser
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case body
+        case system
+        case author
+        case createdAt = "created_at"
+    }
+}
+
 struct GitLabCreatedIssue: Codable, Hashable {
     let id: Int
     let iid: Int
@@ -124,19 +140,34 @@ actor GitLabAPI {
     }
 
     func fetchAssignedIssues(configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
+        try await fetchAssignedIssues(state: "opened", configuration: configuration)
+    }
+
+    func fetchClosedAssignedIssues(updatedAfter: Date? = nil, configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
+        try await fetchAssignedIssues(state: "closed", updatedAfter: updatedAfter, configuration: configuration)
+    }
+
+    private func fetchAssignedIssues(state: String, updatedAfter: Date? = nil, configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssue] {
         var allIssues: [GitLabIssue] = []
         var nextPage = "1"
+        let formatter = ISO8601DateFormatter()
 
         while !nextPage.isEmpty {
+            var queryItems = [
+                URLQueryItem(name: "scope", value: "assigned_to_me"),
+                URLQueryItem(name: "state", value: state),
+                URLQueryItem(name: "per_page", value: "100"),
+                URLQueryItem(name: "page", value: nextPage)
+            ]
+
+            if let updatedAfter {
+                queryItems.append(URLQueryItem(name: "updated_after", value: formatter.string(from: updatedAfter)))
+            }
+
             let request = try makeRequest(
                 configuration: configuration,
                 path: "/api/v4/issues",
-                queryItems: [
-                    URLQueryItem(name: "scope", value: "assigned_to_me"),
-                    URLQueryItem(name: "state", value: "opened"),
-                    URLQueryItem(name: "per_page", value: "100"),
-                    URLQueryItem(name: "page", value: nextPage)
-                ]
+                queryItems: queryItems
             )
 
             let (data, response) = try await session.data(for: request)
@@ -240,6 +271,29 @@ actor GitLabAPI {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try decoder.decode(GitLabIssue.self, from: data)
+    }
+
+    func fetchIssueNotes(projectID: Int, issueIID: Int, configuration: AuthorizedGitLabConfiguration) async throws -> [GitLabIssueNote] {
+        var allNotes: [GitLabIssueNote] = []
+        var nextPage = "1"
+
+        while !nextPage.isEmpty {
+            let request = try makeRequest(
+                configuration: configuration,
+                path: "/api/v4/projects/\(projectID)/issues/\(issueIID)/notes",
+                queryItems: [
+                    URLQueryItem(name: "per_page", value: "100"),
+                    URLQueryItem(name: "page", value: nextPage)
+                ]
+            )
+
+            let (data, response) = try await session.data(for: request)
+            let httpResponse = try validate(response: response, data: data)
+            allNotes += try decoder.decode([GitLabIssueNote].self, from: data)
+            nextPage = httpResponse.value(forHTTPHeaderField: "X-Next-Page") ?? ""
+        }
+
+        return allNotes
     }
 
     func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {

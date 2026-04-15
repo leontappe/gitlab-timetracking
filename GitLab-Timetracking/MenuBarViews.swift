@@ -63,7 +63,7 @@ struct MenuBarLabelView: View {
             }
 
             if settings.showTrackedTimeInMenuBar {
-                let current = tracker.formattedDuration(seconds: Int(tracker.currentCycleElapsed(for: session)))
+                let current = tracker.formattedDuration(seconds: tracker.defaultStopSeconds(for: session))
                 components.append(current)
             }
 
@@ -102,26 +102,56 @@ struct MenuBarContentView: View {
     @State private var highlightedProjectID: Int?
     @State private var issuePendingDeleteConfirmation: GitLabIssue?
     @State private var issuePendingSwitchConfirmation: GitLabIssue?
+    @State private var isHistoryVisible = false
+    @State private var historyInterval: HistoryInterval = .today
     @FocusState private var isProjectSearchFocused: Bool
+
+    enum HistoryInterval: String, CaseIterable, Identifiable {
+        case today = "Today"
+        case last7Days = "Last 7 Days"
+        case last30Days = "Last 30 Days"
+        case all = "All"
+
+        var id: String { rawValue }
+
+        func startDate(now: Date = Date()) -> Date? {
+            let calendar = Calendar.current
+            switch self {
+            case .today:
+                return calendar.startOfDay(for: now)
+            case .last7Days:
+                return calendar.date(byAdding: .day, value: -7, to: now)
+            case .last30Days:
+                return calendar.date(byAdding: .day, value: -30, to: now)
+            case .all:
+                return nil
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 14) {
-                header
-                trackingOverviewSection
+                if isHistoryVisible {
+                    historyHeader
+                    historyContent
+                } else {
+                    header
+                    trackingOverviewSection
 
-                if let errorMessage = tracker.errorMessage {
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                } else if !tracker.infoMessage.isEmpty {
-                    Text(tracker.infoMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let errorMessage = tracker.errorMessage {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if !tracker.infoMessage.isEmpty {
+                        Text(tracker.infoMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    createIssueSection
+                    issuesSection
                 }
-
-                createIssueSection
-                issuesSection
             }
             .padding(16)
 
@@ -164,6 +194,17 @@ struct MenuBarContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Refresh issues")
+
+            Button {
+                isHistoryVisible = true
+                Task {
+                    await tracker.syncHistoryFromGitLab(cutoff: historyInterval.startDate())
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+            }
+            .buttonStyle(.borderless)
+            .help("Booking history")
 
             Button {
                 openSettings()
@@ -217,12 +258,21 @@ struct MenuBarContentView: View {
                         .font(.body)
                         .multilineTextAlignment(.leading)
                     HStack(spacing: 12) {
-                        Label(currentCycleLabel(session: session), systemImage: session.awaitingContinuation ? "pause.circle" : "timer")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Label(totalTrackedLabel(issue: session.issue), systemImage: "clock.badge.checkmark")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if session.awaitingContinuation {
+                            Label("Tracked: \(tracker.formattedDuration(seconds: session.accumulatedMinutes * 60))", systemImage: "clock")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Label("Paused: \(tracker.formattedDuration(seconds: tracker.secondsSinceLastCheckpoint(for: session)))", systemImage: "pause.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Label("Tracked: \(tracker.formattedDuration(seconds: tracker.defaultStopSeconds(for: session)))", systemImage: "timer")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Label(totalTrackedLabel(issue: session.issue), systemImage: "clock.badge.checkmark")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -658,10 +708,6 @@ struct MenuBarContentView: View {
         (session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen).opacity(0.35)
     }
 
-    private func currentCycleLabel(session: TrackingManager.Session) -> String {
-        return "Current: \(tracker.formattedDuration(seconds: Int(tracker.currentCycleElapsed(for: session))))"
-    }
-
     private func totalTrackedLabel(issue: GitLabIssue) -> String {
         "Total: \(tracker.formattedDuration(seconds: tracker.displayedTotalTrackedSeconds(for: issue)))"
     }
@@ -807,6 +853,233 @@ struct MenuBarContentView: View {
                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        }
+    }
+
+    private var filteredHistory: [BookingHistoryEntry] {
+        let entries = tracker.bookingHistory.sorted { $0.bookedAt > $1.bookedAt }
+        guard let start = historyInterval.startDate() else {
+            return entries
+        }
+
+        return entries.filter { $0.bookedAt >= start }
+    }
+
+    private var historyTotalMinutes: Int {
+        filteredHistory.reduce(0) { $0 + $1.minutes }
+    }
+
+    private var historyByDay: [(day: Date, entries: [BookingHistoryEntry])] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: filteredHistory) { entry in
+            calendar.startOfDay(for: entry.bookedAt)
+        }
+
+        return grouped
+            .map { (day: $0.key, entries: $0.value) }
+            .sorted { $0.day > $1.day }
+    }
+
+    private var historyHeader: some View {
+        HStack {
+            Button {
+                isHistoryVisible = false
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(.borderless)
+            .help("Back")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Booking History")
+                    .font(.headline)
+                if let lastSync = tracker.lastHistorySyncAt {
+                    Text("Synced \(lastSync.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Local bookings and GitLab time events")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            if tracker.isSyncingHistory {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Button {
+                Task {
+                    await tracker.syncHistoryFromGitLab(cutoff: historyInterval.startDate(), force: true)
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .disabled(tracker.isSyncingHistory)
+            .help("Sync from GitLab")
+        }
+    }
+
+    @ViewBuilder
+    private var historyContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Interval", selection: $historyInterval) {
+                ForEach(HistoryInterval.allCases) { interval in
+                    Text(interval.rawValue).tag(interval)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: historyInterval) { _, newValue in
+                Task {
+                    await tracker.syncHistoryFromGitLab(cutoff: newValue.startDate())
+                }
+            }
+
+            HStack {
+                Text("\(filteredHistory.count) \(filteredHistory.count == 1 ? "booking" : "bookings")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Total: \(tracker.formattedDuration(seconds: historyTotalMinutes * 60))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let historySyncError = tracker.historySyncError {
+                Text(historySyncError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+
+        if filteredHistory.isEmpty && tracker.activeSession == nil {
+            ContentUnavailableView(
+                tracker.isSyncingHistory ? "Syncing…" : "No Bookings Yet",
+                systemImage: tracker.isSyncingHistory ? "arrow.triangle.2.circlepath" : "tray",
+                description: Text(tracker.isSyncingHistory
+                    ? "Fetching existing time events from GitLab."
+                    : "Stops that book time to GitLab will appear here. Use the refresh button to pull existing entries.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if tracker.activeSession != nil {
+                        TimelineView(.periodic(from: .now, by: 1)) { _ in
+                            if let session = tracker.activeSession {
+                                historyInProgressCard(session: session)
+                            }
+                        }
+                    }
+
+                    ForEach(historyByDay, id: \.day) { group in
+                        historyDaySection(day: group.day, entries: group.entries)
+                    }
+                }
+            }
+            .scrollIndicators(.never)
+        }
+    }
+
+    private func historyInProgressCard(session: TrackingManager.Session) -> some View {
+        let plannedSeconds = tracker.defaultStopSeconds(for: session)
+        let tint = session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen
+        let statusLabel = session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking"
+        let statusIcon = session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill"
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("In Progress")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(tracker.formattedDuration(seconds: plannedSeconds))
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                openURL(session.issue.webURL)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(session.issue.references.short)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(session.issue.title)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                        Label(statusLabel, systemImage: statusIcon)
+                            .font(.caption)
+                            .foregroundStyle(tint)
+                    }
+                    Spacer()
+                    Text(tracker.formattedDuration(seconds: plannedSeconds))
+                        .font(.body.monospacedDigit().weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(tint.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(tint.opacity(0.35), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func historyDaySection(day: Date, entries: [BookingHistoryEntry]) -> some View {
+        let dayMinutes = entries.reduce(0) { $0 + $1.minutes }
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(day.formatted(.dateTime.weekday(.wide).month().day()))
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(tracker.formattedDuration(seconds: dayMinutes * 60))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(entries) { entry in
+                    Button {
+                        openURL(entry.issueWebURL)
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.issueReference)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(entry.issueTitle)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(2)
+                                Text(entry.bookedAt.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(entry.minutes)m")
+                                .font(.body.monospacedDigit().weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 

@@ -251,7 +251,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .onChange(of: settings.gitLabBaseURL) { _, _ in settings.save() }
+        .onChange(of: settings.gitLabBaseURL) { _, _ in
+            settings.save()
+            projectManager.handleSettingsSaved()
+        }
         .onChange(of: settings.oauthClientID) { _, _ in settings.save() }
         .onChange(of: settings.showTrackedTimeInMenuBar) { _, _ in settings.save() }
         .onChange(of: settings.showIssueReferenceInMenuBar) { _, _ in settings.save() }
