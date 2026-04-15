@@ -236,19 +236,22 @@ struct MenuBarContentView: View {
             }
             .buttonStyle(.plain)
 
+            let plannedWithCurrent = tracker.plannedBookingMinutes(for: session, includingCurrentCycle: true)
+            let plannedAccumulated = tracker.plannedBookingMinutes(for: session, includingCurrentCycle: false)
+
             HStack {
                 if session.awaitingContinuation {
                     Button("Continue") {
                         tracker.continueAfterCheckpoint()
                     }
-                    Button("Stop & Book All") {
+                    Button("Stop & Book \(plannedWithCurrent)m (all)") {
                         tracker.finishAwaitingSessionIncludingElapsed()
                     }
-                    Button("Stop") {
+                    Button("Stop & Book \(plannedAccumulated)m") {
                         tracker.finishAwaitingSession()
                     }
                 } else {
-                    Button("Stop and Book Current Time") {
+                    Button("Stop & Book \(plannedWithCurrent)m") {
                         tracker.stopTracking()
                     }
                 }

@@ -77,6 +77,13 @@ final class TrackingManager {
         max(0, Date().timeIntervalSince(session.startedAt))
     }
 
+    func plannedBookingMinutes(for session: Session, includingCurrentCycle: Bool) -> Int {
+        if includingCurrentCycle {
+            return session.accumulatedMinutes + Self.minutesBetween(from: session.lastCheckpointAt, to: Date())
+        }
+        return session.accumulatedMinutes
+    }
+
     func displayedTotalTrackedSeconds(for issue: GitLabIssue) -> Int {
         let baseSeconds = issue.timeStats.totalTimeSpent
         guard let activeSession, activeSession.issue.id == issue.id else {
