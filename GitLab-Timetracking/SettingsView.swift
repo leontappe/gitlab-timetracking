@@ -13,8 +13,7 @@ struct SettingsView: View {
     var projectManager: ProjectManager
     var tracker: TrackingManager
 
-    @State private var saveMessage: String?
-    @State private var isSaving = false
+    @State private var isRefreshing = false
     @State private var pendingGroupPath = ""
     @State private var useCustomInterval = false
 
@@ -108,21 +107,38 @@ struct SettingsView: View {
                 if let currentUser = authManager.currentUser {
                     Text("\(currentUser.name) (@\(currentUser.username))")
                         .font(.body)
-                    Button("Disconnect Account") {
-                        authManager.signOut()
-                        projectManager.clearProjectState()
-                        tracker.clearIssues()
+                    HStack {
+                        Button("Refresh") {
+                            Task {
+                                isRefreshing = true
+                                await authManager.refreshCurrentUser()
+                                await projectManager.refreshProjects()
+                                await tracker.refreshIssues()
+                                isRefreshing = false
+                            }
+                        }
+                        .disabled(isRefreshing)
+
+                        Button("Disconnect Account") {
+                            authManager.signOut()
+                            projectManager.clearProjectState()
+                            tracker.clearIssues()
+                        }
+
+                        if isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
                 } else {
                     Button("Connect GitLab Account") {
                         Task {
-                            await tracker.saveSettings()
                             await authManager.signIn()
                             await projectManager.refreshProjects()
                             await tracker.refreshIssues()
                         }
                     }
-                    .disabled(isSaving || !settings.isConfigured || authManager.isAuthenticating)
+                    .disabled(!settings.isConfigured || authManager.isAuthenticating)
 
                     if authManager.isAuthenticating {
                         ProgressView()
@@ -232,36 +248,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
-                HStack {
-                    Button("Save and Refresh") {
-                        Task {
-                            isSaving = true
-                            await tracker.saveSettings()
-                            await authManager.refreshCurrentUser()
-                            projectManager.handleSettingsSaved()
-                            isSaving = false
-                            saveMessage = tracker.errorMessage == nil ? "Settings saved." : nil
-                        }
-                    }
-                    .disabled(isSaving)
-
-                    if isSaving {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    Spacer()
-
-                    if let saveMessage {
-                        Text(saveMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
         }
         .formStyle(.grouped)
         .padding()
+        .onChange(of: settings.gitLabBaseURL) { _, _ in settings.save() }
+        .onChange(of: settings.oauthClientID) { _, _ in settings.save() }
+        .onChange(of: settings.showTrackedTimeInMenuBar) { _, _ in settings.save() }
+        .onChange(of: settings.showIssueReferenceInMenuBar) { _, _ in settings.save() }
+        .onChange(of: settings.checkpointMinutes) { _, _ in settings.save() }
+        .onChange(of: settings.notificationSound) { _, _ in settings.save() }
     }
 }
