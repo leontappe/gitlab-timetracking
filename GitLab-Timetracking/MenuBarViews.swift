@@ -304,6 +304,11 @@ struct MenuBarContentView: View {
                     Button("Stop & Book \(plannedWithCurrent)m") {
                         tracker.stopTracking()
                     }
+                    if plannedAccumulated > 0 {
+                        Button("Stop & Book \(plannedAccumulated)m") {
+                            tracker.finishAwaitingSession()
+                        }
+                    }
                 }
                 Spacer()
             }
