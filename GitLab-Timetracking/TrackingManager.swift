@@ -109,22 +109,11 @@ final class TrackingManager {
     }
 
     func formattedDuration(seconds: Int) -> String {
-        let clampedSeconds = max(0, seconds)
-        if clampedSeconds < 600 {
-            let minutes = clampedSeconds / 60
-            let remainingSeconds = clampedSeconds % 60
-            return "\(minutes)m \(remainingSeconds)s"
-        }
+        DurationFormatter.format(seconds: seconds)
+    }
 
-        let totalMinutes = clampedSeconds / 60
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        }
-
-        return "\(minutes)m"
+    func formattedDuration(minutes: Int) -> String {
+        DurationFormatter.format(minutes: minutes)
     }
 
     var orderedIssues: [GitLabIssue] {
@@ -229,7 +218,7 @@ final class TrackingManager {
         }
 
         Task {
-            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(DurationFormatter.format(minutes: totalMinutes)) to \(session.issue.references.short).")
         }
     }
 
@@ -272,7 +261,7 @@ final class TrackingManager {
         }
 
         Task {
-            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(DurationFormatter.format(minutes: totalMinutes)) to \(session.issue.references.short).")
         }
     }
 
@@ -292,7 +281,7 @@ final class TrackingManager {
         }
 
         Task {
-            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(totalMinutes) minutes to \(session.issue.references.short).")
+            await book(issue: session.issue, minutes: totalMinutes, followUp: "Booked \(DurationFormatter.format(minutes: totalMinutes)) to \(session.issue.references.short).")
         }
     }
 
@@ -368,12 +357,13 @@ final class TrackingManager {
         activeSession = updated
         persistActiveSession()
 
-        infoMessage = "\(updated.accumulatedMinutes) minutes accumulated on \(updated.issue.references.short)."
+        infoMessage = "\(DurationFormatter.format(minutes: updated.accumulatedMinutes)) accumulated on \(updated.issue.references.short)."
         NotificationCoordinator.shared.sendCheckpointNotification(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
         NotificationCoordinator.shared.beginCheckpointReminderLoop(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
     }
 
     private func book(issue: GitLabIssue, minutes: Int, followUp: String) async {
+        let attemptedAt = Date()
         do {
             let configuration = try await authManager.currentAuthorization()
             try await api.addSpentTime(issue: issue, duration: "\(minutes)m", configuration: configuration)
@@ -381,17 +371,104 @@ final class TrackingManager {
             infoMessage = followUp
 
             let entry = BookingHistoryEntry(
-                id: UUID(),
                 issueID: issue.id,
                 issueReference: issue.references.short,
                 issueTitle: issue.title,
                 issueWebURL: issue.webURL,
                 minutes: minutes,
-                bookedAt: Date()
+                bookedAt: attemptedAt,
+                status: .booked,
+                projectID: issue.projectID,
+                issueIID: issue.iid
             )
             bookingHistory = historyStore.append(entry)
         } catch {
-            errorMessage = error.localizedDescription
+            let message = error.localizedDescription
+            let entry = BookingHistoryEntry(
+                issueID: issue.id,
+                issueReference: issue.references.short,
+                issueTitle: issue.title,
+                issueWebURL: issue.webURL,
+                minutes: minutes,
+                bookedAt: attemptedAt,
+                status: .pending,
+                lastError: message,
+                projectID: issue.projectID,
+                issueIID: issue.iid
+            )
+            bookingHistory = historyStore.append(entry)
+            errorMessage = "Booking failed, saved as pending. \(message)"
+            infoMessage = "Open Booking History to retry \(DurationFormatter.format(minutes: minutes)) on \(issue.references.short)."
+        }
+    }
+
+    var pendingBookings: [BookingHistoryEntry] {
+        bookingHistory.filter { $0.status == .pending }
+    }
+
+    @discardableResult
+    func retryPendingBooking(id: UUID) async -> Bool {
+        guard let entry = bookingHistory.first(where: { $0.id == id }),
+              entry.status == .pending else {
+            return false
+        }
+
+        guard let projectID = entry.projectID, let issueIID = entry.issueIID else {
+            var updated = entry
+            updated.lastError = "Missing issue reference — cannot retry. Discard and re-track."
+            bookingHistory = historyStore.update(updated)
+            errorMessage = updated.lastError
+            return false
+        }
+
+        do {
+            let configuration = try await authManager.currentAuthorization()
+            try await api.addSpentTime(projectID: projectID, issueIID: issueIID, duration: "\(entry.minutes)m", configuration: configuration)
+            var updated = entry
+            updated.status = .booked
+            updated.lastError = nil
+            updated.bookedAt = Date()
+            bookingHistory = historyStore.update(updated)
+            errorMessage = nil
+            infoMessage = "Booked \(DurationFormatter.format(minutes: entry.minutes)) to \(entry.issueReference)."
+            return true
+        } catch {
+            var updated = entry
+            updated.lastError = error.localizedDescription
+            bookingHistory = historyStore.update(updated)
+            errorMessage = "Retry failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func retryAllPendingBookings() async {
+        let pendingIDs = pendingBookings.map(\.id)
+        guard !pendingIDs.isEmpty else { return }
+
+        var successes = 0
+        var failures = 0
+        for id in pendingIDs {
+            if await retryPendingBooking(id: id) {
+                successes += 1
+            } else {
+                failures += 1
+            }
+        }
+
+        if failures == 0 {
+            errorMessage = nil
+            infoMessage = "Retried \(successes) pending booking\(successes == 1 ? "" : "s")."
+        } else {
+            infoMessage = "Retried \(successes), \(failures) still pending."
+        }
+    }
+
+    func discardPendingBooking(id: UUID) {
+        guard let entry = bookingHistory.first(where: { $0.id == id }),
+              entry.status == .pending else { return }
+        bookingHistory = historyStore.remove(id: id)
+        if pendingBookings.isEmpty {
+            errorMessage = nil
         }
     }
 
@@ -498,7 +575,7 @@ final class TrackingManager {
         activeSession = session
 
         if session.awaitingContinuation {
-            infoMessage = "\(session.accumulatedMinutes) minutes accumulated on \(session.issue.references.short)."
+            infoMessage = "\(DurationFormatter.format(minutes: session.accumulatedMinutes)) accumulated on \(session.issue.references.short)."
             NotificationCoordinator.shared.sendCheckpointNotification(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             NotificationCoordinator.shared.beginCheckpointReminderLoop(for: session.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             return
@@ -518,7 +595,7 @@ final class TrackingManager {
             activeSession = updated
             persistActiveSession()
 
-            infoMessage = "\(updated.accumulatedMinutes) minutes accumulated on \(updated.issue.references.short)."
+            infoMessage = "\(DurationFormatter.format(minutes: updated.accumulatedMinutes)) accumulated on \(updated.issue.references.short)."
             NotificationCoordinator.shared.sendCheckpointNotification(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             NotificationCoordinator.shared.beginCheckpointReminderLoop(for: updated.issue, checkpointMinutes: checkpointMinutes, soundName: settings.notificationSound)
             return

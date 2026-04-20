@@ -294,14 +294,14 @@ struct MenuBarContentView: View {
                     Button("Continue") {
                         tracker.continueAfterCheckpoint()
                     }
-                    Button("Stop & Book \(plannedWithCurrent)m (all)") {
+                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedWithCurrent)) (all)") {
                         tracker.finishAwaitingSessionIncludingElapsed()
                     }
-                    Button("Stop & Book \(plannedAccumulated)m") {
+                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedAccumulated))") {
                         tracker.finishAwaitingSession()
                     }
                 } else {
-                    Button("Stop & Book \(plannedWithCurrent)m") {
+                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedWithCurrent))") {
                         tracker.stopTracking()
                     }
                 }
@@ -812,7 +812,7 @@ struct MenuBarContentView: View {
                             tracker.startTracking(issue: newIssue)
                             issuePendingSwitchConfirmation = nil
                         } label: {
-                            Text("Book \(accumulated)m & Switch")
+                            Text("Book \(DurationFormatter.format(minutes: accumulated)) & Switch")
                                 .frame(maxWidth: .infinity)
                         }
                         .controlSize(.large)
@@ -823,7 +823,7 @@ struct MenuBarContentView: View {
                         tracker.startTracking(issue: newIssue)
                         issuePendingSwitchConfirmation = nil
                     } label: {
-                        Text("Book \(total)m & Switch")
+                        Text("Book \(DurationFormatter.format(minutes: total)) & Switch")
                             .frame(maxWidth: .infinity)
                     }
                     .controlSize(.large)
@@ -909,6 +909,20 @@ struct MenuBarContentView: View {
             if tracker.isSyncingHistory {
                 ProgressView()
                     .controlSize(.small)
+            }
+
+            if !tracker.pendingBookings.isEmpty {
+                Button {
+                    Task {
+                        await tracker.retryAllPendingBookings()
+                    }
+                } label: {
+                    Label("Retry \(tracker.pendingBookings.count)", systemImage: "arrow.triangle.2.circlepath")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.orange)
+                .help("Retry all pending bookings")
             }
 
             Button {
@@ -1051,35 +1065,110 @@ struct MenuBarContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(entries) { entry in
-                    Button {
-                        openURL(entry.issueWebURL)
-                    } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.issueReference)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(entry.issueTitle)
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
-                                    .lineLimit(2)
-                                Text(entry.bookedAt.formatted(date: .omitted, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text("\(entry.minutes)m")
-                                .font(.body.monospacedDigit().weight(.semibold))
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    if entry.status == .pending {
+                        pendingEntryCard(entry: entry)
+                    } else {
+                        bookedEntryRow(entry: entry)
                     }
-                    .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    private func bookedEntryRow(entry: BookingHistoryEntry) -> some View {
+        Button {
+            openURL(entry.issueWebURL)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.issueReference)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(entry.issueTitle)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                    Text(entry.bookedAt.formatted(date: .omitted, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(DurationFormatter.format(minutes: entry.minutes))
+                    .font(.body.monospacedDigit().weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func pendingEntryCard(entry: BookingHistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                openURL(entry.issueWebURL)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(AppColors.checkpointOrange)
+                            Text(entry.issueReference)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(entry.issueTitle)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                        Text("Not booked • attempted \(entry.bookedAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.checkpointOrange)
+                        if let lastError = entry.lastError {
+                            Text(lastError)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                        }
+                    }
+                    Spacer()
+                    Text("\(entry.minutes)m")
+                        .font(.body.monospacedDigit().weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        await tracker.retryPendingBooking(id: entry.id)
+                    }
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .controlSize(.small)
+                .disabled(entry.projectID == nil || entry.issueIID == nil)
+
+                Button(role: .destructive) {
+                    tracker.discardPendingBooking(id: entry.id)
+                } label: {
+                    Label("Discard", systemImage: "trash")
+                }
+                .controlSize(.small)
+
+                Spacer()
+            }
+        }
+        .padding(10)
+        .background(AppColors.checkpointOrange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(AppColors.checkpointOrange.opacity(0.35), lineWidth: 1)
         }
     }
 

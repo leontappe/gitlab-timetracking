@@ -70,6 +70,11 @@ enum GitLabTimeNoteParser {
     }
 }
 
+enum BookingStatus: String, Codable, Hashable {
+    case booked
+    case pending
+}
+
 struct BookingHistoryEntry: Codable, Identifiable, Hashable {
     let id: UUID
     let issueID: Int
@@ -77,8 +82,56 @@ struct BookingHistoryEntry: Codable, Identifiable, Hashable {
     let issueTitle: String
     let issueWebURL: URL
     let minutes: Int
-    let bookedAt: Date
+    var bookedAt: Date
     var gitLabEventID: Int?
+    var status: BookingStatus
+    var lastError: String?
+    var projectID: Int?
+    var issueIID: Int?
+
+    init(
+        id: UUID = UUID(),
+        issueID: Int,
+        issueReference: String,
+        issueTitle: String,
+        issueWebURL: URL,
+        minutes: Int,
+        bookedAt: Date,
+        gitLabEventID: Int? = nil,
+        status: BookingStatus = .booked,
+        lastError: String? = nil,
+        projectID: Int? = nil,
+        issueIID: Int? = nil
+    ) {
+        self.id = id
+        self.issueID = issueID
+        self.issueReference = issueReference
+        self.issueTitle = issueTitle
+        self.issueWebURL = issueWebURL
+        self.minutes = minutes
+        self.bookedAt = bookedAt
+        self.gitLabEventID = gitLabEventID
+        self.status = status
+        self.lastError = lastError
+        self.projectID = projectID
+        self.issueIID = issueIID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.issueID = try container.decode(Int.self, forKey: .issueID)
+        self.issueReference = try container.decode(String.self, forKey: .issueReference)
+        self.issueTitle = try container.decode(String.self, forKey: .issueTitle)
+        self.issueWebURL = try container.decode(URL.self, forKey: .issueWebURL)
+        self.minutes = try container.decode(Int.self, forKey: .minutes)
+        self.bookedAt = try container.decode(Date.self, forKey: .bookedAt)
+        self.gitLabEventID = try container.decodeIfPresent(Int.self, forKey: .gitLabEventID)
+        self.status = try container.decodeIfPresent(BookingStatus.self, forKey: .status) ?? .booked
+        self.lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        self.projectID = try container.decodeIfPresent(Int.self, forKey: .projectID)
+        self.issueIID = try container.decodeIfPresent(Int.self, forKey: .issueIID)
+    }
 }
 
 struct BookingHistoryStore {
@@ -114,6 +167,24 @@ struct BookingHistoryStore {
         return entries
     }
 
+    func update(_ entry: BookingHistoryEntry) -> [BookingHistoryEntry] {
+        var entries = load()
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            entries[index] = entry
+        } else {
+            entries.append(entry)
+        }
+        save(entries)
+        return entries
+    }
+
+    func remove(id: UUID) -> [BookingHistoryEntry] {
+        var entries = load()
+        entries.removeAll { $0.id == id }
+        save(entries)
+        return entries
+    }
+
     func mergeRemote(_ remoteEntries: [BookingHistoryEntry]) -> [BookingHistoryEntry] {
         var entries = load()
         let knownEventIDs = Set(entries.compactMap(\.gitLabEventID))
@@ -130,6 +201,8 @@ struct BookingHistoryStore {
                     && abs(local.bookedAt.timeIntervalSince(remote.bookedAt)) < 180
             }) {
                 entries[localIndex].gitLabEventID = eventID
+                entries[localIndex].status = .booked
+                entries[localIndex].lastError = nil
             } else {
                 entries.append(remote)
             }

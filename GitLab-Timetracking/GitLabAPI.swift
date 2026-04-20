@@ -297,7 +297,11 @@ actor GitLabAPI {
     }
 
     func addSpentTime(issue: GitLabIssue, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
-        let path = "/api/v4/projects/\(issue.projectID)/issues/\(issue.iid)/add_spent_time"
+        try await addSpentTime(projectID: issue.projectID, issueIID: issue.iid, duration: duration, configuration: configuration)
+    }
+
+    func addSpentTime(projectID: Int, issueIID: Int, duration: String, configuration: AuthorizedGitLabConfiguration) async throws {
+        let path = "/api/v4/projects/\(projectID)/issues/\(issueIID)/add_spent_time"
         let request = try makeRequest(
             configuration: configuration,
             path: path,
