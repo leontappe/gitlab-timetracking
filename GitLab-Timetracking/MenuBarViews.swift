@@ -857,7 +857,12 @@ struct MenuBarContentView: View {
     }
 
     private var filteredHistory: [BookingHistoryEntry] {
-        let entries = tracker.bookingHistory.sorted { $0.bookedAt > $1.bookedAt }
+        let visibleUploading = tracker.visibleUploadingIDs
+        let entries = tracker.bookingHistory
+            .filter { entry in
+                entry.status != .uploading || visibleUploading.contains(entry.id)
+            }
+            .sorted { $0.bookedAt > $1.bookedAt }
         guard let start = historyInterval.startDate() else {
             return entries
         }
@@ -1065,13 +1070,50 @@ struct MenuBarContentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(entries) { entry in
-                    if entry.status == .pending {
+                    switch entry.status {
+                    case .uploading:
+                        uploadingEntryCard(entry: entry)
+                    case .pending:
                         pendingEntryCard(entry: entry)
-                    } else {
+                    case .booked:
                         bookedEntryRow(entry: entry)
                     }
                 }
             }
+        }
+    }
+
+    private func uploadingEntryCard(entry: BookingHistoryEntry) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(entry.issueReference)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.issueTitle)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                Text("Uploading \(DurationFormatter.format(minutes: entry.minutes))…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(DurationFormatter.format(minutes: entry.minutes))
+                .font(.body.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
         }
     }
 

@@ -34,13 +34,30 @@ struct GitLabOAuthToken: Codable {
 enum GitLabAuthError: LocalizedError {
     case callbackStateMismatch
     case missingAuthorizationCode
+    case invalidBaseURL(String)
+    case browserLaunchFailed(URL)
+    case authorizationFailed(code: String, description: String?)
+    case cancelled
 
     var errorDescription: String? {
         switch self {
         case .callbackStateMismatch:
-            return "GitLab OAuth state validation failed."
+            return "The reply from GitLab didn’t match the request this app sent. This can happen if you finished sign-in from a different browser session — please try again."
         case .missingAuthorizationCode:
-            return "GitLab did not return an authorization code."
+            return "GitLab redirected back to the app without an authorization code. Open GitLab’s applications page and confirm the OAuth app is configured as a public client with scope “api” and the callback URL shown above."
+        case let .invalidBaseURL(value):
+            return value.isEmpty
+                ? "Enter your GitLab URL in Settings before connecting (e.g. https://gitlab.com)."
+                : "“\(value)” isn’t a valid GitLab URL. Include the scheme and host, e.g. https://gitlab.com."
+        case let .browserLaunchFailed(url):
+            return "Couldn’t open \(url.absoluteString) in a browser. Check that your default browser is set and try again."
+        case let .authorizationFailed(code, description):
+            if let description, !description.isEmpty {
+                return "GitLab refused the sign-in request (\(code)): \(description)"
+            }
+            return "GitLab refused the sign-in request (\(code)). Double-check the OAuth application ID and that the callback URL in GitLab exactly matches \(GitLabAuthManager.redirectURI.absoluteString)."
+        case .cancelled:
+            return "Sign-in cancelled."
         }
     }
 }
@@ -48,8 +65,8 @@ enum GitLabAuthError: LocalizedError {
 @MainActor
 @Observable
 final class GitLabAuthManager {
-    static let redirectURI = URL(string: "http://127.0.0.1:45873/oauth/callback")!
-    static let redirectPort: UInt16 = 45873
+    nonisolated static let redirectURI = URL(string: "http://127.0.0.1:45873/oauth/callback")!
+    nonisolated static let redirectPort: UInt16 = 45873
 
     private(set) var currentUser: GitLabUser?
     private(set) var isAuthenticating = false
@@ -60,6 +77,7 @@ final class GitLabAuthManager {
     private let api = GitLabAPI()
     private let keychain = KeychainStore()
     private var token: GitLabOAuthToken?
+    private var signInTask: Task<Void, Never>?
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -77,23 +95,40 @@ final class GitLabAuthManager {
     }
 
     func signIn() async {
+        guard !isAuthenticating else { return }
+
         guard let configuration = settings.configuration else {
             authError = GitLabAPIError.missingConfiguration.localizedDescription
+            return
+        }
+
+        if let urlError = baseURLValidationError(configuration.baseURL, rawInput: settings.gitLabBaseURL) {
+            authError = urlError.localizedDescription
             return
         }
 
         isAuthenticating = true
         authError = nil
 
+        let task = Task {
+            await self.performSignIn(configuration: configuration)
+        }
+        signInTask = task
+        await task.value
+        signInTask = nil
+    }
+
+    func cancelSignIn() {
+        signInTask?.cancel()
+    }
+
+    private func performSignIn(configuration: GitLabConfiguration) async {
+        defer { isAuthenticating = false }
+
         do {
             let state = Self.randomURLSafeString(length: 32)
             let codeVerifier = Self.randomCodeVerifier()
             let codeChallenge = Self.codeChallenge(for: codeVerifier)
-
-            let callbackServer = OAuthCallbackServer(port: Self.redirectPort)
-            let callbackTask = Task {
-                try await callbackServer.waitForCallback()
-            }
 
             let authURL = try makeAuthorizationURL(
                 configuration: configuration,
@@ -101,10 +136,29 @@ final class GitLabAuthManager {
                 codeChallenge: codeChallenge
             )
 
-            NSWorkspace.shared.open(authURL)
+            let callbackServer = OAuthCallbackServer(port: Self.redirectPort)
+            let callbackTask = Task {
+                try await callbackServer.waitForCallback()
+            }
 
-            let callbackURL = try await callbackTask.value
+            guard NSWorkspace.shared.open(authURL) else {
+                callbackTask.cancel()
+                throw GitLabAuthError.browserLaunchFailed(authURL)
+            }
+
+            let callbackURL = try await withTaskCancellationHandler {
+                try await callbackTask.value
+            } onCancel: {
+                callbackTask.cancel()
+            }
+
             let queryItems = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
+
+            if let errorCode = queryItems.first(where: { $0.name == "error" })?.value {
+                let description = queryItems.first(where: { $0.name == "error_description" })?.value
+                throw GitLabAuthError.authorizationFailed(code: errorCode, description: description)
+            }
+
             let returnedState = queryItems.first(where: { $0.name == "state" })?.value
             let code = queryItems.first(where: { $0.name == "code" })?.value
 
@@ -124,12 +178,20 @@ final class GitLabAuthManager {
 
             try saveToken(token)
             self.token = token
-            try await refreshCurrentUser()
+            await refreshCurrentUser()
+        } catch is CancellationError {
+            authError = GitLabAuthError.cancelled.localizedDescription
         } catch {
             authError = error.localizedDescription
         }
+    }
 
-        isAuthenticating = false
+    private func baseURLValidationError(_ url: URL, rawInput: String) -> GitLabAuthError? {
+        let scheme = url.scheme?.lowercased()
+        guard scheme == "http" || scheme == "https", let host = url.host, !host.isEmpty else {
+            return .invalidBaseURL(rawInput.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
     }
 
     func signOut() {

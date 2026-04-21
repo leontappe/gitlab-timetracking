@@ -72,6 +72,7 @@ enum GitLabTimeNoteParser {
 
 enum BookingStatus: String, Codable, Hashable {
     case booked
+    case uploading
     case pending
 }
 
@@ -148,7 +149,19 @@ struct BookingHistoryStore {
             return []
         }
 
-        return (try? JSONDecoder().decode([BookingHistoryEntry].self, from: data)) ?? []
+        var entries = (try? JSONDecoder().decode([BookingHistoryEntry].self, from: data)) ?? []
+        var didRecover = false
+        for index in entries.indices where entries[index].status == .uploading {
+            entries[index].status = .pending
+            if entries[index].lastError == nil {
+                entries[index].lastError = "Booking interrupted — retry to upload."
+            }
+            didRecover = true
+        }
+        if didRecover {
+            save(entries)
+        }
+        return entries
     }
 
     func save(_ entries: [BookingHistoryEntry]) {

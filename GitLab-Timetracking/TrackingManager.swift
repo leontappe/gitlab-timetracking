@@ -51,6 +51,9 @@ final class TrackingManager {
     private(set) var lastHistorySyncAt: Date?
     private(set) var lastSyncedCutoff: Date?
     private var hasSyncedHistoryAtLeastOnce = false
+    private(set) var visibleUploadingIDs: Set<UUID> = []
+    private var uploadingRevealTasks: [UUID: Task<Void, Never>] = [:]
+    private static let uploadingRevealDelay: Duration = .seconds(1)
 
     init(authManager: GitLabAuthManager) {
         self.authManager = authManager
@@ -364,42 +367,56 @@ final class TrackingManager {
 
     private func book(issue: GitLabIssue, minutes: Int, followUp: String) async {
         let attemptedAt = Date()
+        let uploading = BookingHistoryEntry(
+            issueID: issue.id,
+            issueReference: issue.references.short,
+            issueTitle: issue.title,
+            issueWebURL: issue.webURL,
+            minutes: minutes,
+            bookedAt: attemptedAt,
+            status: .uploading,
+            projectID: issue.projectID,
+            issueIID: issue.iid
+        )
+        bookingHistory = historyStore.append(uploading)
+        scheduleUploadingReveal(id: uploading.id)
+
+        defer { cancelUploadingReveal(id: uploading.id) }
+
         do {
             let configuration = try await authManager.currentAuthorization()
             try await api.addSpentTime(issue: issue, duration: "\(minutes)m", configuration: configuration)
             errorMessage = nil
             infoMessage = followUp
 
-            let entry = BookingHistoryEntry(
-                issueID: issue.id,
-                issueReference: issue.references.short,
-                issueTitle: issue.title,
-                issueWebURL: issue.webURL,
-                minutes: minutes,
-                bookedAt: attemptedAt,
-                status: .booked,
-                projectID: issue.projectID,
-                issueIID: issue.iid
-            )
-            bookingHistory = historyStore.append(entry)
+            var updated = uploading
+            updated.status = .booked
+            bookingHistory = historyStore.update(updated)
         } catch {
             let message = error.localizedDescription
-            let entry = BookingHistoryEntry(
-                issueID: issue.id,
-                issueReference: issue.references.short,
-                issueTitle: issue.title,
-                issueWebURL: issue.webURL,
-                minutes: minutes,
-                bookedAt: attemptedAt,
-                status: .pending,
-                lastError: message,
-                projectID: issue.projectID,
-                issueIID: issue.iid
-            )
-            bookingHistory = historyStore.append(entry)
+            var updated = uploading
+            updated.status = .pending
+            updated.lastError = message
+            bookingHistory = historyStore.update(updated)
             errorMessage = "Booking failed, saved as pending. \(message)"
             infoMessage = "Open Booking History to retry \(DurationFormatter.format(minutes: minutes)) on \(issue.references.short)."
         }
+    }
+
+    private func scheduleUploadingReveal(id: UUID) {
+        uploadingRevealTasks[id]?.cancel()
+        uploadingRevealTasks[id] = Task { [weak self] in
+            try? await Task.sleep(for: Self.uploadingRevealDelay)
+            guard !Task.isCancelled, let self else { return }
+            self.visibleUploadingIDs.insert(id)
+            self.uploadingRevealTasks[id] = nil
+        }
+    }
+
+    private func cancelUploadingReveal(id: UUID) {
+        uploadingRevealTasks[id]?.cancel()
+        uploadingRevealTasks[id] = nil
+        visibleUploadingIDs.remove(id)
     }
 
     var pendingBookings: [BookingHistoryEntry] {
@@ -421,10 +438,16 @@ final class TrackingManager {
             return false
         }
 
+        var inFlight = entry
+        inFlight.status = .uploading
+        bookingHistory = historyStore.update(inFlight)
+        visibleUploadingIDs.insert(inFlight.id)
+        defer { cancelUploadingReveal(id: inFlight.id) }
+
         do {
             let configuration = try await authManager.currentAuthorization()
             try await api.addSpentTime(projectID: projectID, issueIID: issueIID, duration: "\(entry.minutes)m", configuration: configuration)
-            var updated = entry
+            var updated = inFlight
             updated.status = .booked
             updated.lastError = nil
             updated.bookedAt = Date()
@@ -433,7 +456,8 @@ final class TrackingManager {
             infoMessage = "Booked \(DurationFormatter.format(minutes: entry.minutes)) to \(entry.issueReference)."
             return true
         } catch {
-            var updated = entry
+            var updated = inFlight
+            updated.status = .pending
             updated.lastError = error.localizedDescription
             bookingHistory = historyStore.update(updated)
             errorMessage = "Retry failed: \(error.localizedDescription)"
@@ -473,6 +497,11 @@ final class TrackingManager {
     }
 
     func clearBookingHistory() {
+        for task in uploadingRevealTasks.values {
+            task.cancel()
+        }
+        uploadingRevealTasks.removeAll()
+        visibleUploadingIDs.removeAll()
         historyStore.clear()
         bookingHistory = []
     }

@@ -131,25 +131,43 @@ struct SettingsView: View {
                         }
                     }
                 } else {
-                    Button("Connect GitLab Account") {
-                        Task {
-                            await authManager.signIn()
-                            await projectManager.refreshProjects()
-                            await tracker.refreshIssues()
+                    HStack {
+                        Button("Connect GitLab Account") {
+                            Task {
+                                await authManager.signIn()
+                                await projectManager.refreshProjects()
+                                await tracker.refreshIssues()
+                            }
+                        }
+                        .disabled(!settings.isConfigured || authManager.isAuthenticating)
+
+                        if authManager.isAuthenticating {
+                            ProgressView()
+                                .controlSize(.small)
+
+                            Button("Cancel") {
+                                authManager.cancelSignIn()
+                            }
                         }
                     }
-                    .disabled(!settings.isConfigured || authManager.isAuthenticating)
 
                     if authManager.isAuthenticating {
-                        ProgressView()
-                            .controlSize(.small)
+                        Text("Waiting for you to authorize the app in your browser. If nothing happens within about two minutes, the request will time out.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
                 if let authError = authManager.authError {
-                    Text(authError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(authError)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.callout)
                 }
             }
 
