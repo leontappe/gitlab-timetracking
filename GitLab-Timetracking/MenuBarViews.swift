@@ -30,7 +30,11 @@ struct MenuBarLabelView: View {
                 .font(.system(size: 20, weight: .bold))
             Text(statusLabel)
         }
-        .task {
+        .task(id: shouldTick) {
+            // Only advance the clock while a running session's elapsed time is
+            // actually shown. Otherwise @Observable handles the rare updates and
+            // the app stays idle instead of waking every second all day.
+            guard shouldTick else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 tick &+= 1
@@ -42,16 +46,16 @@ struct MenuBarLabelView: View {
         }
     }
 
+    /// The menu-bar label only needs per-second refreshes when a running
+    /// session's elapsed time is on screen (not while idle or paused/away).
+    private var shouldTick: Bool {
+        settings.showTrackedTimeInMenuBar
+            && tracker.isTracking
+            && tracker.activeSession?.awaySince == nil
+    }
+
     private var statusSymbolName: String {
-        if tracker.isTracking {
-            return "play.circle.fill"
-        }
-
-        if tracker.activeIssue != nil {
-            return "bell.badge.fill"
-        }
-
-        return "circle.fill"
+        tracker.isTracking ? "play.circle.fill" : "circle.fill"
     }
 
     private var statusLabel: String {
@@ -74,15 +78,7 @@ struct MenuBarLabelView: View {
     }
 
     private var statusColor: Color {
-        if tracker.isTracking {
-            return AppColors.trackingGreen
-        }
-
-        if tracker.activeIssue != nil {
-            return AppColors.checkpointOrange
-        }
-
-        return .secondary
+        tracker.isTracking ? AppColors.trackingGreen : .secondary
     }
 }
 
@@ -155,7 +151,7 @@ struct MenuBarContentView: View {
             }
             .padding(16)
 
-            if let issue = issuePendingSwitchConfirmation {
+            if let issue = issuePendingSwitchConfirmation, tracker.activeSession != nil {
                 switchConfirmationOverlay(newIssue: issue)
             }
 
@@ -219,33 +215,37 @@ struct MenuBarContentView: View {
 
     @ViewBuilder
     private var trackingOverviewSection: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            if let session = tracker.activeSession {
-                activeSection(session: session)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("No Active Tracking", systemImage: "pause.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    Text("Select an assigned issue below to start tracking time.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        // Only drive a per-second timeline while a session is active; the idle
+        // placeholder is static and doesn't need to re-render every second.
+        if tracker.activeSession != nil {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                if let session = tracker.activeSession {
+                    activeSection(session: session)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("No Active Tracking", systemImage: "pause.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("Select an assigned issue below to start tracking time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 
     @ViewBuilder
     private func activeSection(session: TrackingManager.Session) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking", systemImage: session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill")
+            Label("Currently Tracking", systemImage: "play.circle.fill")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen)
+                .foregroundStyle(AppColors.trackingGreen)
 
             Button {
                 openURL(session.issue.webURL)
@@ -258,21 +258,12 @@ struct MenuBarContentView: View {
                         .font(.body)
                         .multilineTextAlignment(.leading)
                     HStack(spacing: 12) {
-                        if session.awaitingContinuation {
-                            Label("Tracked: \(tracker.formattedDuration(seconds: session.accumulatedMinutes * 60))", systemImage: "clock")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Label("Paused: \(tracker.formattedDuration(seconds: tracker.secondsSinceLastCheckpoint(for: session)))", systemImage: "pause.circle")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Label("Tracked: \(tracker.formattedDuration(seconds: tracker.defaultStopSeconds(for: session)))", systemImage: "timer")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Label(totalTrackedLabel(issue: session.issue), systemImage: "clock.badge.checkmark")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Label("Tracked: \(tracker.formattedDuration(seconds: tracker.defaultStopSeconds(for: session)))", systemImage: "timer")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Label(totalTrackedLabel(issue: session.issue), systemImage: "clock.badge.checkmark")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -286,28 +277,65 @@ struct MenuBarContentView: View {
             }
             .buttonStyle(.plain)
 
-            let plannedWithCurrent = tracker.plannedBookingMinutes(for: session, includingCurrentCycle: true)
-            let plannedAccumulated = tracker.plannedBookingMinutes(for: session, includingCurrentCycle: false)
+            awayGapReconciliation(session: session)
+
+            let plannedWithCurrent = tracker.plannedBookingMinutes(for: session)
 
             HStack {
-                if session.awaitingContinuation {
-                    Button("Continue") {
-                        tracker.continueAfterCheckpoint()
-                    }
-                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedWithCurrent)) (all)") {
-                        tracker.finishAwaitingSessionIncludingElapsed()
-                    }
-                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedAccumulated))") {
-                        tracker.finishAwaitingSession()
-                    }
-                } else {
-                    Button("Stop & Book \(DurationFormatter.format(minutes: plannedWithCurrent))") {
-                        tracker.stopTracking()
-                    }
+                Button("Stop & Book \(DurationFormatter.format(minutes: plannedWithCurrent))") {
+                    tracker.stopTracking()
                 }
                 Spacer()
             }
         }
+    }
+
+    @ViewBuilder
+    private func awayGapReconciliation(session: TrackingManager.Session) -> some View {
+        let gaps = session.awayGaps.filter { $0.resolution == .undecided }
+        if !gaps.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Away time — count it?", systemImage: "moon.zzz.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppColors.checkpointOrange)
+
+                ForEach(gaps) { gap in
+                    HStack(spacing: 8) {
+                        Text("\(awayGapRange(gap)) · \(tracker.formattedDuration(minutes: gap.minutes))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Count") {
+                            tracker.resolveAwayGap(id: gap.id, as: .counted)
+                        }
+                        .controlSize(.small)
+                        Button("Discard") {
+                            tracker.resolveAwayGap(id: gap.id, as: .discarded)
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppColors.checkpointOrange.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(AppColors.checkpointOrange.opacity(0.35), lineWidth: 1)
+            }
+        }
+    }
+
+    private static let awayGapTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private func awayGapRange(_ gap: AwayGap) -> String {
+        let formatter = Self.awayGapTimeFormatter
+        return "\(formatter.string(from: gap.start))–\(formatter.string(from: gap.end))"
     }
 
     @ViewBuilder
@@ -701,11 +729,11 @@ struct MenuBarContentView: View {
     }
 
     private func activeSessionBackgroundColor(session: TrackingManager.Session) -> Color {
-        (session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen).opacity(0.12)
+        AppColors.trackingGreen.opacity(0.12)
     }
 
     private func activeSessionBorderColor(session: TrackingManager.Session) -> Color {
-        (session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen).opacity(0.35)
+        AppColors.trackingGreen.opacity(0.35)
     }
 
     private func totalTrackedLabel(issue: GitLabIssue) -> String {
@@ -800,73 +828,88 @@ struct MenuBarContentView: View {
         }
     }
 
+    @ViewBuilder
     private func switchConfirmationOverlay(newIssue: GitLabIssue) -> some View {
-        let session = tracker.activeSession!
-        let accumulated = session.accumulatedMinutes
-        let partial = max(1, Int(Date().timeIntervalSince(session.lastCheckpointAt) / 60))
-        let total = accumulated + partial
+        if let session = tracker.activeSession {
+            let awayMinutes = session.awayGaps
+                .filter { $0.resolution == .undecided }
+                .reduce(0) { $0 + $1.minutes }
 
-        return ZStack {
-            Color.black.opacity(0.2)
-                .ignoresSafeArea()
+            ZStack {
+                Color.black.opacity(0.2)
+                    .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Switch Issue?")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Switch Issue?")
+                        .font(.headline)
 
-                Text("Currently tracking \(session.issue.references.short). How should the tracked time be handled?")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    Text("Currently tracking \(session.issue.references.short). How should the tracked time be handled?")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-                VStack(spacing: 8) {
-                    if accumulated > 0 {
-                        Button {
-                            tracker.finishAwaitingSession()
-                            tracker.startTracking(issue: newIssue)
-                            issuePendingSwitchConfirmation = nil
-                        } label: {
-                            Text("Book \(DurationFormatter.format(minutes: accumulated)) & Switch")
-                                .frame(maxWidth: .infinity)
+                    // Tracking keeps running while this is open, so recompute the
+                    // booked total live instead of showing a stale number.
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        let work = tracker.plannedBookingMinutes(for: session)
+
+                        VStack(spacing: 8) {
+                            Button {
+                                switchTracking(to: newIssue, includeAway: false)
+                            } label: {
+                                Text("Book \(DurationFormatter.format(minutes: work)) & Switch")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .controlSize(.large)
+
+                            if awayMinutes > 0 {
+                                Button {
+                                    switchTracking(to: newIssue, includeAway: true)
+                                } label: {
+                                    Text("Book \(DurationFormatter.format(minutes: work + awayMinutes)) incl. away & Switch")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .controlSize(.large)
+                            }
+
+                            Button {
+                                tracker.stopTrackingWithoutBooking()
+                                tracker.startTracking(issue: newIssue)
+                                issuePendingSwitchConfirmation = nil
+                            } label: {
+                                Text("Discard & Switch")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .controlSize(.large)
+
+                            Button("Cancel") {
+                                issuePendingSwitchConfirmation = nil
+                            }
+                            .controlSize(.large)
                         }
-                        .controlSize(.large)
                     }
-
-                    Button {
-                        tracker.finishAwaitingSessionIncludingElapsed()
-                        tracker.startTracking(issue: newIssue)
-                        issuePendingSwitchConfirmation = nil
-                    } label: {
-                        Text("Book \(DurationFormatter.format(minutes: total)) & Switch")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .controlSize(.large)
-
-                    Button {
-                        tracker.stopTrackingWithoutBooking()
-                        tracker.startTracking(issue: newIssue)
-                        issuePendingSwitchConfirmation = nil
-                    } label: {
-                        Text("Discard & Switch")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .controlSize(.large)
-
-                    Button("Cancel") {
-                        issuePendingSwitchConfirmation = nil
-                    }
-                    .controlSize(.large)
                 }
+                .padding(16)
+                .frame(maxWidth: 320, alignment: .leading)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
             }
-            .padding(16)
-            .frame(maxWidth: 320, alignment: .leading)
-            .background(Color(nsColor: .windowBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         }
+    }
+
+    /// Books the current session and starts the new one. When `includeAway` is
+    /// set, unresolved away periods are counted first so they are not dropped.
+    private func switchTracking(to newIssue: GitLabIssue, includeAway: Bool) {
+        if includeAway {
+            tracker.countAllUnresolvedAwayGaps()
+        }
+        tracker.stopTracking()
+        tracker.startTracking(issue: newIssue)
+        issuePendingSwitchConfirmation = nil
     }
 
     private var filteredHistory: [BookingHistoryEntry] {
@@ -1020,9 +1063,9 @@ struct MenuBarContentView: View {
 
     private func historyInProgressCard(session: TrackingManager.Session) -> some View {
         let plannedSeconds = tracker.defaultStopSeconds(for: session)
-        let tint = session.awaitingContinuation ? AppColors.checkpointOrange : AppColors.trackingGreen
-        let statusLabel = session.awaitingContinuation ? "Awaiting Confirmation" : "Currently Tracking"
-        let statusIcon = session.awaitingContinuation ? "bell.badge.fill" : "play.circle.fill"
+        let tint = AppColors.trackingGreen
+        let statusLabel = "Currently Tracking"
+        let statusIcon = "play.circle.fill"
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
