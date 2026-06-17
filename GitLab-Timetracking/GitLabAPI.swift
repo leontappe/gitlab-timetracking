@@ -545,10 +545,55 @@ actor GitLabAPI {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let message = Self.readableErrorMessage(from: data) ?? "Unknown error"
             throw GitLabAPIError.serverError(statusCode: httpResponse.statusCode, message: message)
         }
 
         return httpResponse
+    }
+
+    /// Extracts a human-readable message from a GitLab error body.
+    ///
+    /// GitLab reports errors in a few shapes: a plain `{"message": "..."}`, a
+    /// per-field `{"message": {"title": ["is too long (maximum is 255 characters)"]}}`,
+    /// or OAuth-style `{"error": "...", "error_description": "..."}`. Falls back to the
+    /// raw body so nothing is silently lost.
+    static func readableErrorMessage(from data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return String(data: data, encoding: .utf8)
+        }
+
+        if let dict = object as? [String: Any] {
+            if let message = dict["message"], let text = readableErrorValue(message) {
+                return text
+            }
+            if let description = dict["error_description"] as? String {
+                return description
+            }
+            if let error = dict["error"] as? String {
+                return error
+            }
+        }
+
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func readableErrorValue(_ value: Any) -> String? {
+        if let text = value as? String {
+            return text
+        }
+        if let array = value as? [Any] {
+            let parts = array.compactMap { readableErrorValue($0) }
+            return parts.isEmpty ? nil : parts.joined(separator: ", ")
+        }
+        if let dict = value as? [String: Any] {
+            let parts = dict.keys.sorted().compactMap { key -> String? in
+                guard let inner = readableErrorValue(dict[key]!) else { return nil }
+                return "\(key) \(inner)"
+            }
+            return parts.isEmpty ? nil : parts.joined(separator: "; ")
+        }
+        return nil
     }
 }
