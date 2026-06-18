@@ -119,6 +119,17 @@ struct MenuBarContentView: View {
     @State private var historyInterval: HistoryInterval = .today
     @FocusState private var isProjectSearchFocused: Bool
 
+    /// GitLab rejects issue titles longer than this (HTTP 400, "is too long").
+    private let maxIssueTitleLength = 255
+
+    private var trimmedIssueTitle: String {
+        newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isIssueTitleTooLong: Bool {
+        trimmedIssueTitle.count > maxIssueTitleLength
+    }
+
     enum HistoryInterval: String, CaseIterable, Identifiable {
         case today = "Today"
         case last7Days = "Last 7 Days"
@@ -468,6 +479,13 @@ struct MenuBarContentView: View {
             TextField("Issue title", text: $newIssueTitle)
                 .textFieldStyle(.roundedBorder)
 
+            if isIssueTitleTooLong {
+                Text("Title is \(trimmedIssueTitle.count) characters — GitLab allows at most \(maxIssueTitleLength).")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             TextField("Description (optional)", text: $newIssueDescription, axis: .vertical)
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
@@ -676,7 +694,8 @@ struct MenuBarContentView: View {
             .disabled(
                 !authManager.isAuthenticated
                     || projectManager.selectedProjectID == nil
-                    || newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || trimmedIssueTitle.isEmpty
+                    || isIssueTitleTooLong
                     || projectManager.isCreatingIssue
             )
 
@@ -702,6 +721,8 @@ struct MenuBarContentView: View {
             Text(projectErrorMessage)
                 .font(.caption)
                 .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
         }
     }
 
@@ -759,7 +780,7 @@ struct MenuBarContentView: View {
     private func createIssue() {
         Task {
             let createdIssue = await projectManager.createIssue(
-                title: newIssueTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                title: trimmedIssueTitle,
                 description: newIssueDescription.trimmingCharacters(in: .whitespacesAndNewlines),
                 assignToCurrentUser: assignIssueToMe
             )
